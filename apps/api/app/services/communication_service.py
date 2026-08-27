@@ -3,7 +3,13 @@ import hashlib
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError, ValidationAppError
-from app.models.communication import Attachment, Conversation, InternalNote, Message, MessageDirection
+from app.models.communication import (
+    Attachment,
+    Conversation,
+    InternalNote,
+    Message,
+    MessageDirection,
+)
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.communication_repo import CommunicationRepository
 from app.repositories.ticket_repo import TicketRepository
@@ -109,7 +115,7 @@ class CommunicationService:
         body: str,
         external_message_ref: str | None,
     ) -> Message:
-        """Records an already-received customer message.
+        """Record an already-received customer message.
 
         Phase 5 does not implement external channel delivery or polling;
         channel adapters can call this deterministic service in Phase 6+.
@@ -171,7 +177,9 @@ class CommunicationService:
 
     def _validate_attachment(self, *, filename: str, content: bytes) -> None:
         if not filename or len(filename) > 255:
-            raise ValidationAppError("attachment filename is required and must be <= 255 characters")
+            raise ValidationAppError(
+                "attachment filename is required and must be <= 255 characters"
+            )
         if not content:
             raise ValidationAppError("attachment is empty")
         if len(content) > MAX_ATTACHMENT_BYTES:
