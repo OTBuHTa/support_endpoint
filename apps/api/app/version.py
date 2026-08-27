@@ -5,4 +5,4 @@ kept here as its own independent constant — not shared/imported across
 projects.
 """
 
-API_VERSION = "0.1.0-alpha"
+API_VERSION = "0.2.0-alpha"
