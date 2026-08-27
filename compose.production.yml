@@ -1,0 +1,104 @@
+name: csp
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-csp}
+      POSTGRES_USER: ${POSTGRES_USER:-csp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - csp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-csp} -d ${POSTGRES_DB:-csp}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - csp_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+
+  migration:
+    build:
+      context: ./apps/api
+      args:
+        APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
+    env_file: [${CSP_ENV_FILE:-.env.production}]
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  api:
+    build:
+      context: ./apps/api
+      args:
+        APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
+    restart: unless-stopped
+    env_file: [${CSP_ENV_FILE:-.env.production}]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    expose: ["8000"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [backend]
+
+  web:
+    build:
+      context: ./apps/web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${CSP_WEB_BIND:-127.0.0.1:8180}:80"
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=32m
+      - /var/run:size=4m
+      - /tmp:size=16m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    networks: [frontend, backend]
+
+networks:
+  frontend:
+  backend:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+volumes:
+  csp_postgres_data:
+  csp_redis_data:

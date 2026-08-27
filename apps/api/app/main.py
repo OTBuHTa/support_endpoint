@@ -17,11 +17,14 @@ logger = logging.getLogger("app")
 
 
 def create_app() -> FastAPI:
+    docs_url = None if settings.is_production else "/docs"
+    openapi_url = None if settings.is_production else "/openapi.json"
     app = FastAPI(
         title=settings.app_name,
         version=API_VERSION,
-        docs_url="/docs",
-        openapi_url="/openapi.json",
+        docs_url=docs_url,
+        redoc_url=None,
+        openapi_url=openapi_url,
     )
 
     app.add_middleware(CorrelationIdMiddleware)
