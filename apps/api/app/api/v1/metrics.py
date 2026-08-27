@@ -24,4 +24,7 @@ def metrics(authorization: str | None = Header(default=None)) -> PlainTextRespon
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return PlainTextResponse(request_metrics.render_prometheus(), media_type="text/plain; version=0.0.4")
+    return PlainTextResponse(
+        request_metrics.render_prometheus(),
+        media_type="text/plain; version=0.0.4",
+    )
