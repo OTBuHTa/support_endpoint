@@ -13,6 +13,7 @@ def production_settings(**overrides) -> Settings:
         "AUTH_RATE_LIMIT_ENABLED": True,
         "SECURE_HEADERS_HSTS_ENABLED": True,
         "CORS_ALLOW_ORIGINS": "https://support.example.com",
+        "METRICS_BEARER_TOKEN": "metrics-token-at-least-32-characters-long",
     }
     values.update(overrides)
     return Settings(_env_file=None, **values)
@@ -26,6 +27,7 @@ def production_settings(**overrides) -> Settings:
         ({"AUTH_RATE_LIMIT_ENABLED": False}, "AUTH_RATE_LIMIT_ENABLED"),
         ({"SECURE_HEADERS_HSTS_ENABLED": False}, "SECURE_HEADERS_HSTS_ENABLED"),
         ({"CORS_ALLOW_ORIGINS": ""}, "CORS_ALLOW_ORIGINS"),
+        ({"METRICS_BEARER_TOKEN": "short"}, "METRICS_BEARER_TOKEN"),
     ],
 )
 def test_production_settings_fail_closed(override, message):
