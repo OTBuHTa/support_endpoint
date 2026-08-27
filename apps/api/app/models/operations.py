@@ -40,7 +40,10 @@ class SupportTask(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[TaskStatus] = mapped_column(
-        Enum(TaskStatus, native_enum=False, length=16), nullable=False, default=TaskStatus.OPEN, index=True
+        Enum(TaskStatus, native_enum=False, length=16),
+        nullable=False,
+        default=TaskStatus.OPEN,
+        index=True,
     )
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -83,6 +86,8 @@ class TicketSLA(TimestampMixin, Base):
     resolution_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_response_warning_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    resolution_warning_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     first_response_breached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     resolution_breached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
