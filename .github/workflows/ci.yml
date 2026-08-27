@@ -98,3 +98,18 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+
+  production-manifest:
+    name: Production compose manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Validate production compose
+        env:
+          POSTGRES_PASSWORD: ci-only-password
+          CSP_ENV_FILE: .env.production.example
+        run: docker compose -f compose.production.yml config --quiet

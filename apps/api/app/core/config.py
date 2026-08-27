@@ -1,7 +1,9 @@
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_JWT_SECRET = "replace-with-at-least-32-random-bytes-before-external-access"
 
 
 class Settings(BaseSettings):
@@ -16,10 +18,7 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://redis:6379/0", alias="REDIS_URL")
-    jwt_secret: str = Field(
-        default="replace-with-at-least-32-random-bytes-before-external-access",
-        alias="JWT_SECRET",
-    )
+    jwt_secret: str = Field(default=DEFAULT_JWT_SECRET, alias="JWT_SECRET")
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     access_token_minutes: int = Field(default=15, alias="ACCESS_TOKEN_MINUTES")
     refresh_token_days: int = Field(default=14, alias="REFRESH_TOKEN_DAYS")
@@ -55,6 +54,25 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if not self.is_production:
+            return self
+        errors: list[str] = []
+        if self.jwt_secret == DEFAULT_JWT_SECRET or len(self.jwt_secret) < 32:
+            errors.append("JWT_SECRET must be replaced with at least 32 characters")
+        if self.bootstrap_enabled:
+            errors.append("BOOTSTRAP_ENABLED must be false")
+        if not self.auth_rate_limit_enabled:
+            errors.append("AUTH_RATE_LIMIT_ENABLED must be true")
+        if not self.secure_headers_hsts_enabled:
+            errors.append("SECURE_HEADERS_HSTS_ENABLED must be true")
+        if not self.cors_origins_list:
+            errors.append("CORS_ALLOW_ORIGINS must not be empty")
+        if errors:
+            raise ValueError("Unsafe production configuration: " + "; ".join(errors))
+        return self
 
 
 @lru_cache
