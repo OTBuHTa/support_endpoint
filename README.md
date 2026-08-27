@@ -15,6 +15,7 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - Internal notes are physically separate from customer-visible messages.
 - AI assistance is advisory only: it returns stored proposals and has no mutation, shell, infrastructure or external-message tools.
 - The backend redacts email and phone-like values before sending ticket context to the LLM endpoint.
+- LLM calls are bounded by a workspace usage limit and a process-local failure circuit breaker.
 - The frontend never calls the LLM directly.
 
 ## Implemented
@@ -23,9 +24,9 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - **CRM (Phase 3):** organizations, clients and contacts with workspace-scoped CRUD, search, pagination, soft-delete and IDOR guards (ADR-004).
 - **Service Desk (Phase 4):** ticket lifecycle, queues/categories/tags, assignment history, filtering, separate `tickets.close` permission and audit (ADR-005).
 - **Communications (Phase 5):** conversations, channel abstraction, inbound/outbound messages, separate internal notes and bounded binary attachments (ADR-006).
-- **Operations + AI / Phase 6A:** workspace knowledge articles, `knowledge.read` / `knowledge.write`, `ai.assist`, immutable AI suggestions, prompt redaction, bounded knowledge context, per-workspace suggestion rate limit and OpenAI-compatible local `LLMGateway` (ADR-007).
+- **Operations + AI / Phase 6A:** workspace knowledge articles, `knowledge.read` / `knowledge.write`, `ai.assist`, immutable AI suggestions, prompt redaction, bounded knowledge context, per-workspace suggestion rate limit, process-local circuit breaker and OpenAI-compatible local `LLMGateway` (ADR-007).
 
-AI remains disabled by default with `LLM_ENABLED=false`. When disabled or unavailable, CRM/ticket/communications/knowledge flows continue normally.
+AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, CRM/ticket/communications/knowledge flows continue normally.
 
 ## Quick start
 
@@ -54,7 +55,7 @@ pytest -q
 ruff check app tests
 ```
 
-GitHub Actions validates Python 3.12 lint/tests, whitespace and complete Alembic upgrade/downgrade. Security regressions cover workspace/IDOR boundaries, RBAC, communications separation, attachment behavior, AI redaction and the requirement that AI suggestions do not mutate tickets.
+GitHub Actions validates Python 3.12 lint/tests, whitespace and complete Alembic upgrade/downgrade. Security regressions cover workspace/IDOR boundaries, RBAC, communications separation, attachment behavior, actual pre-transport AI redaction, shared process-local circuit-breaker state and the requirement that AI suggestions do not mutate tickets.
 
 ## Roadmap
 
