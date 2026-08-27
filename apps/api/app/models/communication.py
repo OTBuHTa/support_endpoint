@@ -118,7 +118,9 @@ class Attachment(TimestampMixin, Base):
         String(36), ForeignKey("internal_notes.id", ondelete="CASCADE"), nullable=True, index=True
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    content_type: Mapped[str] = mapped_column(String(255), nullable=False, default="application/octet-stream")
+    content_type: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="application/octet-stream"
+    )
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
