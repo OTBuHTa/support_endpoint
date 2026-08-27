@@ -6,19 +6,16 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 
 ## Current milestone
 
-`v0.5.0-alpha` — **Phase 6B: Deterministic Operations** on top of the completed Foundation, CRM, Service Desk, Communications and Phase 6A Knowledge/AI layers.
+`v0.6.0-alpha` — **Phase 7A: Operator Control Center**. The nginx placeholder has been replaced by a real React/Vite/TypeScript web application over the established backend contracts.
 
 ## Architecture principles
 
 - Own Postgres database (`csp`), own Redis, own Docker network/volumes — never shared with AI-project-SRV.
 - Workspace isolation and deny-by-default RBAC remain authoritative at every tenant-scoped endpoint.
+- The frontend reads `/workspaces/{id}/my-permissions` and hides unavailable surfaces, but backend authorization remains authoritative.
 - Internal notes are physically separate from customer-visible messages.
 - Tasks, SLA state and notifications are deterministic application records; AI cannot execute them.
-- SLA first-response/resolution timestamps are reconstructed from customer-visible outbound messages and audited ticket status transitions.
-- AI assistance is advisory only: it returns stored proposals and has no mutation, shell, infrastructure or external-message tools.
-- The backend redacts email and phone-like values before sending ticket context to the LLM endpoint.
-- LLM calls are bounded by a workspace usage limit and a process-local failure circuit breaker.
-- The frontend never calls the LLM directly.
+- AI assistance is advisory only and the frontend never calls the LLM directly.
 
 ## Implemented
 
@@ -26,28 +23,28 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - **CRM (Phase 3):** organizations, clients and contacts with workspace-scoped CRUD, search, pagination, soft-delete and IDOR guards (ADR-004).
 - **Service Desk (Phase 4):** ticket lifecycle, queues/categories/tags, assignment history, filtering, separate `tickets.close` permission and audit (ADR-005).
 - **Communications (Phase 5):** conversations, channel abstraction, inbound/outbound messages, separate internal notes and bounded binary attachments (ADR-006).
-- **Knowledge + Advisory AI (Phase 6A):** workspace knowledge articles, `knowledge.read` / `knowledge.write`, `ai.assist`, immutable AI suggestions, prompt redaction, bounded knowledge context, per-workspace suggestion rate limit, process-local circuit breaker and OpenAI-compatible local `LLMGateway` (ADR-007).
-- **Deterministic Operations (Phase 6B):** ticket tasks, per-priority SLA policies, replayable ticket SLA clocks, warning/breach evaluation, user-scoped in-app notifications and new deny-by-default operations permissions (ADR-008).
+- **Knowledge + Advisory AI (Phase 6A):** knowledge articles, AI permissions, redaction, immutable suggestions, rate limit and process-local circuit breaker (ADR-007).
+- **Deterministic Operations (Phase 6B):** ticket tasks, per-priority SLA policies, replayable ticket SLA clocks, warning/breach evaluation and user-scoped notifications (ADR-008).
+- **Operator Control Center (Phase 7A):** React 18 + Vite + TypeScript, operator login/token refresh, workspace selection, permission-aware navigation, Overview, Tickets, Clients, Tasks, Knowledge and Notifications, responsive dark UI, nginx `/api` proxy and frontend CI.
 
-AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, CRM/ticket/communications/knowledge/operations flows continue normally.
+AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, the non-AI product remains operational.
 
 ## Quick start
 
 1. Copy `.env.example` to `.env` and replace `JWT_SECRET`.
 2. Run `docker compose up --build -d` (or `make up`).
 3. Run `docker compose --profile tools run --rm --build migration` (or `make migrate`).
-4. Open `http://localhost:8100/docs` (API) or `http://localhost:8180` (placeholder web UI).
-5. Call `POST /api/v1/auth/bootstrap` once to create the initial owner/workspace.
+4. Open `http://localhost:8180` for the operator web UI or `http://localhost:8100/docs` for the API.
+5. Call `POST /api/v1/auth/bootstrap` once to create the initial owner/workspace if this is a fresh install.
 6. Set `BOOTSTRAP_ENABLED=false` after initialization before external exposure.
 7. Keep `LLM_ENABLED=false` until the local model endpoint is intentionally enabled and validated.
-8. A scheduler may periodically call the protected SLA evaluation service; missed ticks do not lose response/resolution history.
 
 ## Ports (`srv-ai`)
 
 | Service | Host port | Notes |
 |---|---|---|
 | api | 8100 → 8000 | Does not collide with AI-project-SRV's 8000/8080 |
-| web | 8180 → 80 | Placeholder page; real UI in Phase 7 |
+| web | 8180 → 80 | React/Vite production bundle served by nginx |
 
 Docker network subnet: `172.31.0.0/24` (distinct from AI-project-SRV's `172.30.0.0/29`).
 
@@ -57,10 +54,19 @@ Docker network subnet: `172.31.0.0/24` (distinct from AI-project-SRV's `172.30.0
 cd apps/api
 pytest -q
 ruff check app tests
+
+cd ../web
+npm install --no-audit --no-fund
+npm run typecheck
+npm run build
 ```
 
-GitHub Actions validates Python 3.12 lint/tests, whitespace and complete Alembic upgrade/downgrade. Security regressions cover workspace/IDOR boundaries, RBAC, communications separation, attachment behavior, AI boundaries, task isolation, SLA history derivation, duplicate-safe breach notification and notification ownership.
+GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck and production Vite build.
+
+## Phase 7B — client portal identity boundary
+
+A customer-facing portal is intentionally **not** simulated by reusing operator permissions. The current backend has workspace users and CRM Client records but no authoritative `User ↔ Client` binding. Phase 7B will add that identity contract, ownership-scoped portal endpoints and regressions before exposing customer tickets/messages in the browser. This prevents an attractive UI from becoming an authorization bypass.
 
 ## Roadmap
 
-See `docs/architecture.md`. The next major checkpoint is **Phase 7 — Frontend**: React/Vite operator UI and client portal over the now-established CRM, Service Desk, Communications, Knowledge/AI and Operations contracts. Phase 8 then performs production hardening, observability/performance work and final security review.
+See `docs/architecture.md`. Phase 7B completes the customer portal identity/API boundary and portal UI. Phase 8 then performs production hardening, observability/performance work and final security review.
