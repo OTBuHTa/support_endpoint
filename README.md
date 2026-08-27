@@ -1,62 +1,30 @@
 # Customer Service Platform
 
-Production-oriented CRM / Service Desk platform for remote customer
-support: tickets, operator queues, SLA, knowledge base, and optional
-advisory AI assistance via a shared local LLM.
+Production-oriented CRM / Service Desk platform for remote customer support: tickets, operator queues, communications, SLA, knowledge base, and optional advisory AI assistance via a shared local LLM.
 
-Operationally independent from **AI-project-SRV**, which runs on the
-same host (`srv-ai`) but does not share any database, cache, network,
-volume, or secret with this project.
+Operationally independent from **AI-project-SRV**, which runs on the same host (`srv-ai`) but does not share any database, cache, network, volume, or secret with this project.
 
 ## Current milestone
 
-`v0.1.0-alpha` — Foundation + CRM + Service Desk: authentication,
-workspace/multi-tenancy model, RBAC with deny-by-default authorization,
-health/readiness, structured logging, audit trail, client/organization/
-contact records, and tickets with a server-controlled lifecycle.
+`v0.3.0-alpha` — Foundation + CRM + Service Desk + Communications: authentication, workspace/multi-tenancy model, deny-by-default RBAC, audit trail, CRM, ticket lifecycle, conversations/messages, isolated internal notes, and bounded attachments.
 
 ## Architecture principles
 
-- Own Postgres database (`csp`), own Redis, own Docker network/volumes
-  — never shared with AI-project-SRV.
-- Workspace (tenant) isolation is a first-class requirement; every
-  tenant-scoped endpoint performs an object-level authorization check.
+- Own Postgres database (`csp`), own Redis, own Docker network/volumes — never shared with AI-project-SRV.
+- Workspace (tenant) isolation is a first-class requirement; every tenant-scoped endpoint performs an object-level authorization check.
 - Backend permissions are authoritative; roles are convenience bundles.
-- AI assistance (Phase 6+) is advisory only — never performs mutating
-  actions directly; deterministic application logic always mediates.
+- Internal notes are physically separate from customer-visible messages; message APIs cannot accidentally serialize operator-only notes.
+- AI assistance (Phase 6+) is advisory only — never performs mutating actions directly; deterministic application logic always mediates.
 - The frontend never calls the LLM directly.
 
-## Implemented (Foundation)
+## Implemented
 
-- FastAPI service foundation, PostgreSQL + Redis via Docker Compose.
-- Health and readiness endpoints.
-- Alembic migration baseline.
-- User / Workspace / WorkspaceMembership / Role / Permission /
-  RolePermission models.
-- System roles: Client, Operator, Supervisor, Administrator, with
-  canonical permission bundles.
-- One-time bootstrap-owner flow, plus self-service registration.
-- JWT access tokens and rotating, revocable opaque refresh sessions.
-- Deny-by-default, object-level workspace authorization
-  (`require_permission`), returning 404 (not 403) on both "no
-  membership" and "no permission" to avoid disclosing workspace
-  existence to non-members.
-- Redis-backed auth rate limiting (fails open if Redis is down).
-- Hash-chained-style append-only audit event log.
-- Structured JSON logging with request correlation IDs.
-- **CRM (Phase 3):** `ClientOrganization`, `Client`, `ClientContact` —
-  workspace-scoped CRUD, case-insensitive search (`?q=`), pagination,
-  organization filtering, soft-delete, object-level IDOR guard on
-  every by-id lookup (see ADR-004).
-- **Service Desk (Phase 4):** `Ticket` with a server-controlled state
-  machine (`new → open → in_progress → waiting_customer/internal →
-  resolved → closed`, reopen supported — see ADR-005),
-  `Queue`/`TicketCategory`/`Tag` workspace-customizable lookups,
-  assignment with workspace-membership validation and append-only
-  history (`GET /tickets/{id}/assignments`), filtered search
-  (status/priority/queue/category/assignee/client/`?q=`), pagination,
-  `tickets.close` enforced as a distinct permission from
-  `tickets.update`.
+- **Foundation (Phase 2):** FastAPI, PostgreSQL/Redis, health/readiness, Alembic, users/workspaces/memberships, JWT + rotating refresh sessions, deny-by-default RBAC, auth rate limiting, append-only audit events, structured logging and correlation IDs.
+- **CRM (Phase 3):** `ClientOrganization`, `Client`, `ClientContact` — workspace-scoped CRUD, case-insensitive search, pagination, soft-delete and IDOR guards (ADR-004).
+- **Service Desk (Phase 4):** `Ticket`, server-controlled lifecycle, `Queue`/`TicketCategory`/`Tag`, assignment history, search/filtering, separate `tickets.close` permission and IDOR guards (ADR-005).
+- **Communications (Phase 5):** ticket-scoped `Conversation` channel abstraction (`web`, `email`, `chat`, `phone`, `api`), inbound/outbound `Message`, separate `InternalNote`, binary `Attachment` with 5 MiB cap and SHA-256 integrity metadata, audit events and workspace/ticket/object authorization (ADR-006).
+
+Phase 5 records communications but does **not** send or poll external email/chat providers. External channel adapters remain later work and must call the deterministic service layer.
 
 ## Quick start
 
@@ -67,7 +35,7 @@ contact records, and tickets with a server-controlled lifecycle.
 5. Call `POST /api/v1/auth/bootstrap` once to create the initial owner/workspace.
 6. Set `BOOTSTRAP_ENABLED=false` after initialization before external exposure.
 
-## Ports (this host, `srv-ai`)
+## Ports (`srv-ai`)
 
 | Service | Host port | Notes |
 |---|---|---|
@@ -78,23 +46,14 @@ Docker network subnet: `172.31.0.0/24` (distinct from AI-project-SRV's `172.30.0
 
 ## Testing
 
-```
+```bash
 cd apps/api
-pytest -q          # 37 tests, including mandatory security regressions:
-                    #  - workspace A cannot access workspace B (workspaces, clients, tickets)
-                    #  - a user with no membership cannot access a workspace
-                    #  - an Operator cannot reach an Administrator-only endpoint
-                    #  - an Operator can read but not write clients (RBAC)
-                    #  - an Operator can update but not close a ticket (tickets.close)
-                    #  - the Client system role has zero internal CRM/Service-Desk access
-                    #  - a client/ticket id from one workspace never resolves via another
-                    #    workspace's path (object-level IDOR guard)
-                    #  - a revoked/reused refresh token is rejected
-                    #  - an invalid ticket status transition is rejected server-side
+pytest -q
 ruff check app tests
 ```
 
+Security regressions cover workspace isolation, object-level IDOR, role boundaries, ticket state transitions, communications separation, cross-workspace conversation denial and attachment size/integrity behavior. GitHub Actions also performs an Alembic upgrade/downgrade check on Python 3.12.
+
 ## Roadmap
 
-See `docs/architecture.md` for the full phase plan (CRM, Service Desk,
-Communications, SLA/AI, Frontend, Production hardening).
+See `docs/architecture.md` for the full phase plan. Next milestone: **Phase 6 — Operations + AI** (tasks, SLA, notifications, knowledge base and bounded/advisory local-LLM features).
