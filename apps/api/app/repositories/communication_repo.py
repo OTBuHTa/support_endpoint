@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.communication import (
@@ -154,3 +154,9 @@ class CommunicationRepository:
             Attachment.workspace_id == workspace_id,
         )
         return self.db.scalar(stmt)
+
+    def attachment_usage_bytes(self, *, workspace_id: str) -> int:
+        stmt = select(func.coalesce(func.sum(Attachment.size_bytes), 0)).where(
+            Attachment.workspace_id == workspace_id
+        )
+        return int(self.db.scalar(stmt) or 0)

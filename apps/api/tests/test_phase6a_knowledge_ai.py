@@ -116,6 +116,62 @@ def test_circuit_breaker_is_shared_across_gateway_instances(monkeypatch):
     LLMGateway.reset_circuit()
 
 
+def test_circuit_breaker_is_distributed_via_redis(monkeypatch):
+    class FakeRedis:
+        def __init__(self):
+            self.values: dict[str, int | str] = {}
+
+        def exists(self, key):
+            return int(key in self.values)
+
+        def incr(self, key):
+            value = int(self.values.get(key, 0)) + 1
+            self.values[key] = value
+            return value
+
+        def expire(self, key, seconds):
+            return True
+
+        def set(self, key, value, ex=None):
+            self.values[key] = value
+            return True
+
+        def delete(self, *keys):
+            for key in keys:
+                self.values.pop(key, None)
+            return len(keys)
+
+    class BrokenClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            raise RuntimeError("model endpoint down")
+
+    shared_redis = FakeRedis()
+    settings = Settings(
+        LLM_ENABLED=True,
+        LLM_CIRCUIT_FAILURE_THRESHOLD=2,
+        LLM_CIRCUIT_COOLDOWN_SECONDS=30,
+    )
+    monkeypatch.setattr("app.ai.gateway.httpx.Client", BrokenClient)
+    first_worker = LLMGateway(settings, redis_client=shared_redis)
+    second_worker = LLMGateway(settings, redis_client=shared_redis)
+
+    with pytest.raises(RuntimeError, match="model endpoint down"):
+        first_worker.suggest(system_prompt="x", user_prompt="one")
+    with pytest.raises(RuntimeError, match="model endpoint down"):
+        first_worker.suggest(system_prompt="x", user_prompt="two")
+    with pytest.raises(RuntimeError, match="circuit breaker is open"):
+        second_worker.suggest(system_prompt="x", user_prompt="three")
+
+
 def test_knowledge_article_crud_and_workspace_idor(client):
     tokens_a = register_and_create_workspace(
         client, email="kb-a@example.com", workspace_name="Knowledge A"

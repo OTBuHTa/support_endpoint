@@ -1,3 +1,4 @@
+from app.core.config import Settings
 from tests.conftest import register_and_create_workspace
 
 
@@ -140,6 +141,45 @@ def test_attachment_size_limit_is_enforced(client):
         headers=headers,
     )
     assert response.status_code == 422
+
+
+def test_attachment_filename_is_normalized_and_workspace_quota_enforced(client, monkeypatch):
+    tokens, ws_id, ticket_id = _setup_ticket(
+        client, email="quota-owner@example.com", workspace_name="AttachmentQuota"
+    )
+    headers = auth_header(tokens["access_token"])
+    conversation_id = client.post(
+        f"/api/v1/workspaces/{ws_id}/tickets/{ticket_id}/conversations",
+        json={"channel": "web"},
+        headers=headers,
+    ).json()["id"]
+    message_id = client.post(
+        f"/api/v1/workspaces/{ws_id}/tickets/{ticket_id}/conversations/"
+        f"{conversation_id}/messages",
+        json={"body": "quota test"},
+        headers=headers,
+    ).json()["id"]
+
+    settings = Settings(ATTACHMENT_MAX_BYTES=10, ATTACHMENT_WORKSPACE_QUOTA_BYTES=5)
+    monkeypatch.setattr("app.services.communication_service.get_settings", lambda: settings)
+
+    first = client.post(
+        f"/api/v1/workspaces/{ws_id}/tickets/{ticket_id}/conversations/"
+        f"{conversation_id}/messages/{message_id}/attachments",
+        files={"file": ("../../safe.txt", b"abc", "text/plain")},
+        headers=headers,
+    )
+    assert first.status_code == 201, first.text
+    assert first.json()["filename"] == "safe.txt"
+
+    second = client.post(
+        f"/api/v1/workspaces/{ws_id}/tickets/{ticket_id}/conversations/"
+        f"{conversation_id}/messages/{message_id}/attachments",
+        files={"file": ("second.txt", b"def", "text/plain")},
+        headers=headers,
+    )
+    assert second.status_code == 422
+    assert "quota" in second.text.lower()
 
 
 def test_conversation_idor_guard_across_workspaces(client):

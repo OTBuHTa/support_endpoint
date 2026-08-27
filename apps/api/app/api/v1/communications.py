@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.authz.deps import require_permission
 from app.authz.permissions import TICKETS_INTERNAL_COMMENT, TICKETS_READ, TICKETS_UPDATE
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.workspace import WorkspaceMembership
 from app.repositories.rbac_repo import RbacRepository
@@ -19,7 +20,7 @@ from app.schemas.communication import (
     MessageCreateRequest,
     MessageResponse,
 )
-from app.services.communication_service import MAX_ATTACHMENT_BYTES, CommunicationService
+from app.services.communication_service import CommunicationService
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/tickets/{ticket_id}", tags=["communications"]
@@ -148,9 +149,9 @@ def list_internal_notes(
 
 
 async def _bounded_upload(file: UploadFile) -> bytes:
-    # Read one byte beyond the limit so an oversized body is rejected,
-    # rather than silently truncated and accepted.
-    return await file.read(MAX_ATTACHMENT_BYTES + 1)
+    # Read one byte beyond the configured limit so oversized content is
+    # rejected rather than silently truncated and accepted.
+    return await file.read(get_settings().attachment_max_bytes + 1)
 
 
 @router.post(
