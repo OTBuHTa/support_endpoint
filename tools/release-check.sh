@@ -3,6 +3,7 @@ set -euo pipefail
 
 expected="${RELEASE_VERSION:-0.9.0-rc1}"
 pep440="${expected/-rc/rc}"
+release_doc="docs/RELEASE-v${expected}.md"
 
 fail() {
   printf 'release-check: %s\n' "$*" >&2
@@ -12,6 +13,7 @@ fail() {
 expect_literal() {
   local file="$1"
   local literal="$2"
+  [[ -f "$file" ]] || fail "$file is missing"
   grep -Fq -- "$literal" "$file" || fail "$file does not contain: $literal"
 }
 
@@ -20,6 +22,7 @@ expect_literal apps/api/pyproject.toml "version = \"$pep440\""
 expect_literal apps/web/package.json "\"version\": \"$expected\""
 expect_literal README.md "\`v$expected\`"
 expect_literal docs/production.md "v$expected"
+expect_literal "$release_doc" "Release v$expected"
 
 expect_literal .env.production.example "BOOTSTRAP_ENABLED=false"
 expect_literal .env.production.example "AUTH_RATE_LIMIT_ENABLED=true"
