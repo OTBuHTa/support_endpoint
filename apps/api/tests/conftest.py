@@ -80,3 +80,28 @@ def bootstrap_and_login(client: TestClient, *, email: str, workspace_name: str) 
     )
     assert resp.status_code == 200, resp.text
     return resp.json()
+
+
+def register_and_create_workspace(client: TestClient, *, email: str, workspace_name: str) -> dict:
+    """Independent-tenant helper: registers a brand new, unrelated
+    user account (not the one-time bootstrap flow) and has them
+    create their own workspace, becoming its Administrator.
+    """
+    resp = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "correct-horse-battery-staple",
+            "full_name": "Test Owner",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    tokens = resp.json()
+
+    ws_resp = client.post(
+        "/api/v1/workspaces",
+        json={"name": workspace_name},
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert ws_resp.status_code == 201, ws_resp.text
+    return tokens
