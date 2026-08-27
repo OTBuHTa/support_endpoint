@@ -18,6 +18,7 @@ from app.models.operations import (  # noqa: F401
     TaskStatus,
     TicketSLA,
 )
+from app.models.portal import ClientUserLink  # noqa: F401
 from app.models.rbac import Permission, Role, RolePermission  # noqa: F401
 from app.models.session import RefreshSession  # noqa: F401
 from app.models.ticket import (  # noqa: F401
@@ -64,4 +65,5 @@ __all__ = [
     "TicketSLA",
     "Notification",
     "NotificationType",
+    "ClientUserLink",
 ]

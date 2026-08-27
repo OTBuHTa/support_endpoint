@@ -8,6 +8,7 @@ from app.api.v1 import (
     knowledge,
     operations,
     organizations,
+    portal,
     queues,
     tags,
     ticket_categories,
@@ -28,3 +29,4 @@ api_router.include_router(tickets.router)
 api_router.include_router(communications.router)
 api_router.include_router(knowledge.router)
 api_router.include_router(operations.router)
+api_router.include_router(portal.router)
