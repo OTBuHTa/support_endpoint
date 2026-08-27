@@ -5,6 +5,7 @@ from app.api.v1 import (
     clients,
     communications,
     health,
+    knowledge,
     organizations,
     queues,
     tags,
@@ -24,3 +25,4 @@ api_router.include_router(ticket_categories.router)
 api_router.include_router(tags.router)
 api_router.include_router(tickets.router)
 api_router.include_router(communications.router)
+api_router.include_router(knowledge.router)
