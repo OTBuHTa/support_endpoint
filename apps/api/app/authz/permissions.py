@@ -13,6 +13,11 @@ TICKETS_ASSIGN = "tickets.assign"
 TICKETS_UPDATE = "tickets.update"
 TICKETS_CLOSE = "tickets.close"
 TICKETS_INTERNAL_COMMENT = "tickets.internal_comment"
+TASKS_READ = "tasks.read"
+TASKS_WRITE = "tasks.write"
+SLA_READ = "sla.read"
+SLA_MANAGE = "sla.manage"
+NOTIFICATIONS_READ = "notifications.read"
 KNOWLEDGE_READ = "knowledge.read"
 KNOWLEDGE_WRITE = "knowledge.write"
 AI_ASSIST = "ai.assist"
@@ -31,6 +36,11 @@ ALL_PERMISSIONS: tuple[str, ...] = (
     TICKETS_UPDATE,
     TICKETS_CLOSE,
     TICKETS_INTERNAL_COMMENT,
+    TASKS_READ,
+    TASKS_WRITE,
+    SLA_READ,
+    SLA_MANAGE,
+    NOTIFICATIONS_READ,
     KNOWLEDGE_READ,
     KNOWLEDGE_WRITE,
     AI_ASSIST,
@@ -55,6 +65,10 @@ SYSTEM_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
         TICKETS_ASSIGN,
         TICKETS_UPDATE,
         TICKETS_INTERNAL_COMMENT,
+        TASKS_READ,
+        TASKS_WRITE,
+        SLA_READ,
+        NOTIFICATIONS_READ,
         KNOWLEDGE_READ,
         AI_ASSIST,
     ),
@@ -67,6 +81,11 @@ SYSTEM_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
         TICKETS_UPDATE,
         TICKETS_CLOSE,
         TICKETS_INTERNAL_COMMENT,
+        TASKS_READ,
+        TASKS_WRITE,
+        SLA_READ,
+        SLA_MANAGE,
+        NOTIFICATIONS_READ,
         KNOWLEDGE_READ,
         KNOWLEDGE_WRITE,
         AI_ASSIST,

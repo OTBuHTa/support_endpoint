@@ -24,7 +24,7 @@ apps/api/app/
 ├── main.py
 ├── core/              # config, security, exceptions
 ├── db/                # SQLAlchemy, Redis, declarative base
-├── models/            # identity, CRM, ticketing, communications, knowledge/AI records
+├── models/            # identity, CRM, ticketing, communications, knowledge/AI, operations
 ├── schemas/           # Pydantic request/response DTOs
 ├── repositories/      # DB access only
 ├── services/          # deterministic business logic + audit
@@ -85,6 +85,24 @@ The LLM receives no mutation or execution tools. It cannot close/reassign ticket
 
 Knowledge articles are workspace-scoped. Operators receive `knowledge.read` and `ai.assist`; supervisors receive `knowledge.write` in addition; the Client system role receives none of these internal permissions. The Phase 6A migration also upgrades grants for existing system roles, not only newly bootstrapped installations.
 
+## Deterministic Operations model (Phase 6B)
+
+```text
+Ticket
+  ├── SupportTask [open → done|cancelled]
+  ├── TicketSLA
+  │     ├── created_at → response/resolution deadlines from SLAPolicy
+  │     ├── first OUTBOUND Message → first_response_at
+  │     └── first audited resolved|closed transition → resolved_at
+  └── Notification [recipient scoped to workspace membership]
+```
+
+SLA clocks are replayable from deterministic business history. They use ticket creation time as the origin and can be materialized later without moving the deadline. The evaluator derives historical response/resolution timestamps before deciding whether a warning or breach is due, and persisted anti-duplicate flags prevent repeated notifications for the same SLA objective. See ADR-008.
+
+Default elapsed-time targets are materialized per priority when needed and may be replaced by supervisors/administrators using `sla.manage`. Phase 6B intentionally uses wall-clock minutes, not business-hour calendars. Notifications are in-app records only; external delivery remains an adapter concern.
+
+AI does not participate in task transitions, SLA mutation/evaluation or notification creation. It may only produce advisory text under the Phase 6A boundary.
+
 ## Phase roadmap
 
 - **Phase 0 — Discovery** ✅
@@ -94,15 +112,16 @@ Knowledge articles are workspace-scoped. Operators receive `knowledge.read` and 
 - **Phase 4 — Service Desk** ✅ tickets, state machine, queues/categories/tags, assignment history, RBAC, audit (ADR-005).
 - **Phase 5 — Communications** ✅ conversations, channel abstraction, inbound/outbound messages, separate internal notes, attachments, audit and nested IDOR guards (ADR-006).
 - **Phase 6A — Knowledge + Advisory AI** ✅ knowledge articles, AI permissions, redaction, bounded context, immutable suggestions, local OpenAI-compatible gateway, workspace rate limit and process-local circuit breaker (ADR-007).
-- **Phase 6B — Deterministic Operations**: tasks, SLA engine and notifications. AI may propose operations-related text but may not execute state changes.
+- **Phase 6B — Deterministic Operations** ✅ tasks, per-priority SLA policies, replayable SLA clocks, warning/breach evaluation, in-app notifications and operations RBAC (ADR-008).
 - **Phase 7 — Frontend**: React/Vite operator UI and client portal.
 - **Phase 8 — Production hardening**: tenant/security review, performance/indexes, metrics/traces, distributed breaker evaluation, object-storage evaluation, CI supply-chain hardening, build identity and final documentation.
 
 ## Current non-goals
 
 - No external email/chat provider delivery or polling yet.
-- No SLA engine, tasks or automated queue routing yet; these are Phase 6B.
+- No business-hours/holiday SLA calendar or automated queue routing yet.
 - No autonomous AI actions; all AI output is advisory.
 - No distributed LLM circuit state across multiple API workers yet; evaluate in Phase 8 if operationally justified.
+- No external notification delivery adapter yet; notifications are in-app only.
 - No real operator/client frontend yet; nginx placeholder remains until Phase 7.
 - No bulk ticket operations or multi-assignee/watchers model.
