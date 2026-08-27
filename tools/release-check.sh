@@ -34,5 +34,6 @@ expect_literal .env.production.example "ATTACHMENT_WORKSPACE_QUOTA_BYTES="
 expect_literal compose.production.yml "internal: true"
 expect_literal compose.production.yml "no-new-privileges:true"
 expect_literal compose.production.yml "app.workers.sla_scheduler"
+expect_literal apps/web/Dockerfile "index.html portal.html"
 
 printf 'release-check: %s metadata and production invariants OK\n' "$expected"
