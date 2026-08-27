@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     llm_workspace_requests_per_minute: int = Field(
         default=12, alias="LLM_WORKSPACE_REQUESTS_PER_MINUTE"
     )
+    llm_circuit_failure_threshold: int = Field(default=3, alias="LLM_CIRCUIT_FAILURE_THRESHOLD")
+    llm_circuit_cooldown_seconds: int = Field(default=30, alias="LLM_CIRCUIT_COOLDOWN_SECONDS")
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
