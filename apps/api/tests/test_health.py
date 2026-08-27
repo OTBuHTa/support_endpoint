@@ -9,3 +9,4 @@ def test_ready_ok(client):
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     assert resp.json()["checks"]["database"] == "ok"
+    assert resp.json()["checks"]["redis"] == "ok"
