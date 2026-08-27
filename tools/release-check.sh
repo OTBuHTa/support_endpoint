@@ -35,5 +35,8 @@ expect_literal compose.production.yml "internal: true"
 expect_literal compose.production.yml "no-new-privileges:true"
 expect_literal compose.production.yml "app.workers.sla_scheduler"
 expect_literal apps/web/Dockerfile "index.html portal.html"
+expect_literal apps/web/nginx.conf "location = /docs"
+expect_literal apps/web/nginx.conf "location = /openapi.json"
+expect_literal apps/web/nginx.conf "location = /redoc"
 
 printf 'release-check: %s metadata and production invariants OK\n' "$expected"
