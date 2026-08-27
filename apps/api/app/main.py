@@ -8,6 +8,7 @@ from app.api.v1 import api_router
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.middleware.correlation import CorrelationIdMiddleware, get_correlation_id
+from app.middleware.request_metrics import RequestMetricsMiddleware
 from app.observability.logging import configure_logging
 from app.version import API_VERSION
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
         openapi_url=openapi_url,
     )
 
+    app.add_middleware(RequestMetricsMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(
         CORSMiddleware,
