@@ -36,12 +36,19 @@ printf 'deploy-production: preflight version=%s revision=%s branch=%s\n' \
 bash tools/release-check.sh
 docker compose -f "$COMPOSE_FILE" config --quiet
 
-backup_output="$(bash tools/backup.sh)"
-printf '%s\n' "$backup_output"
-backup_file="$(printf '%s\n' "$backup_output" | grep -Eo '([^[:space:]]+\.dump)' | tail -1 || true)"
-[[ -n "$backup_file" && -f "$backup_file" ]] || fail "could not identify backup dump from tools/backup.sh output"
-
-bash tools/restore-verify.sh "$backup_file"
+backup_file="initial-install"
+if docker compose -f "$COMPOSE_FILE" ps -a --services | grep -qx postgres; then
+  printf 'deploy-production: existing PostgreSQL container detected; backup is mandatory\n'
+  docker compose -f "$COMPOSE_FILE" up -d --wait postgres
+  backup_output="$(bash tools/backup.sh)"
+  printf '%s\n' "$backup_output"
+  backup_file="$(printf '%s\n' "$backup_output" | grep -Eo '([^[:space:]]+\.dump)' | tail -1 || true)"
+  [[ -n "$backup_file" && -f "$backup_file" ]] \
+    || fail "could not identify backup dump from tools/backup.sh output"
+  bash tools/restore-verify.sh "$backup_file"
+else
+  printf 'deploy-production: no existing PostgreSQL container; treating as initial install\n'
+fi
 
 previous_revision="$(curl -fsS "$WEB_URL/health" 2>/dev/null | sed -n 's/.*"build_revision":"\([^"]*\)".*/\1/p' || true)"
 if [[ -n "$previous_revision" ]]; then
