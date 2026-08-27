@@ -133,7 +133,7 @@ jobs:
       - name: Seed schema marker
         run: |
           docker compose -f compose.production.yml exec -T postgres \
-            sh -ceu 'psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="CREATE TABLE alembic_version (version_num varchar(32) PRIMARY KEY); INSERT INTO alembic_version VALUES ($$ci_restore_check$$);"'
+            sh -ceu 'psql --username="$POSTGRES_USER" --dbname="$POSTGRES_DB" --command="CREATE TABLE alembic_version (version_num integer PRIMARY KEY); INSERT INTO alembic_version VALUES (1);"'
       - name: Backup and restore verify
         run: |
           bash tools/backup.sh
