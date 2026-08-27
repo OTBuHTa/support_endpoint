@@ -1,0 +1,26 @@
+name: Runner Probe
+
+on:
+  push:
+    branches:
+      - agent/runner-probe
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 3
+    steps:
+      - name: Probe runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "hostname=$(hostname)"
+          echo "user=$(id -un)"
+          echo "uid=$(id -u)"
+          echo "groups=$(id -Gn)"
+          test "$(hostname)" = "srv-ai"
+          docker info >/dev/null
+          echo "docker=ok"
