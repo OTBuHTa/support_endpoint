@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.models.audit import AuditEvent
 from app.models.communication import Conversation, Message, MessageDirection
 from app.models.operations import Notification, NotificationType, SLAPolicy, SupportTask, TicketSLA
+from app.models.ticket import Ticket
 from app.models.ticket_enums import TicketPriority
 
 
@@ -88,6 +89,17 @@ class OperationsRepository:
                 TicketSLA.ticket_id == ticket_id,
             )
         )
+
+    def tickets_without_sla(self, *, workspace_id: str) -> list[Ticket]:
+        stmt = (
+            select(Ticket)
+            .outerjoin(TicketSLA, TicketSLA.ticket_id == Ticket.id)
+            .where(
+                Ticket.workspace_id == workspace_id,
+                TicketSLA.id.is_(None),
+            )
+        )
+        return list(self.db.scalars(stmt))
 
     def list_active_slas(self, *, workspace_id: str) -> list[TicketSLA]:
         stmt = select(TicketSLA).where(
