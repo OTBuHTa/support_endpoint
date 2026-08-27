@@ -2,7 +2,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json ./
 RUN npm install --no-audit --no-fund
-COPY tsconfig.json tsconfig.app.json vite.config.ts index.html ./
+COPY tsconfig.json tsconfig.app.json vite.config.ts index.html portal.html ./
 COPY src ./src
 RUN npm run build
 

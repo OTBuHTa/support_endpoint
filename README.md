@@ -2,11 +2,11 @@
 
 Production-oriented CRM / Service Desk platform for remote customer support: tickets, operator queues, communications, knowledge base, deterministic operations and optional advisory AI assistance via a shared local LLM.
 
-Operationally independent from **AI-project-SRV**, which runs on the same host (`srv-ai`) but does not share any database, cache, network, volume or secret with this project.
+Operationally independent from **AI-project-SRV**, which runs on the same host (`srv-ai`) but does not share any database, cache, network, volume, secret, scheduler or attachment storage with this project.
 
 ## Current milestone
 
-`v0.8.1-alpha` — **Phase 8B: Observability + DB performance + tested backup/restore**, on top of the hardened production runtime from Phase 8A.
+`v0.9.0-rc1` — **Release Candidate 1: production-readiness validation**. New product features are frozen for this candidate; changes are limited to release consistency, deployment/smoke gates, security findings and release documentation.
 
 ## Architecture principles
 
@@ -26,12 +26,15 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - **CRM (Phase 3):** organizations, clients and contacts with workspace-scoped CRUD, search, pagination, soft-delete and IDOR guards (ADR-004).
 - **Service Desk (Phase 4):** ticket lifecycle, queues/categories/tags, assignment history, filtering, separate `tickets.close` permission and audit (ADR-005).
 - **Communications (Phase 5):** conversations, channel abstraction, inbound/outbound messages, separate internal notes and bounded binary attachments (ADR-006).
-- **Knowledge + Advisory AI (Phase 6A):** knowledge articles, AI permissions, redaction, immutable suggestions, rate limit and process-local circuit breaker (ADR-007).
+- **Knowledge + Advisory AI (Phase 6A):** knowledge articles, AI permissions, redaction, immutable suggestions and rate limiting (ADR-007).
 - **Deterministic Operations (Phase 6B):** ticket tasks, per-priority SLA policies, replayable ticket SLA clocks, warning/breach evaluation and user-scoped notifications (ADR-008).
 - **Operator Control Center (Phase 7A):** React 18 + Vite + TypeScript operator UI, workspace selection, permission-aware navigation and frontend CI (ADR-009).
 - **Client Portal (Phase 7B):** explicit User↔Client binding, ownership-scoped portal accounts/tickets/messages, customer ticket creation and inbound replies, cross-user IDOR regressions, and a separate `/portal.html` Vite entrypoint (ADR-010).
 - **Runtime & Edge Hardening (Phase 8A):** production fail-closed settings, private backend network, no direct API host port, read-only application containers, reduced capabilities, production security headers, disabled API docs and production manifest CI.
 - **Observability & Recovery (Phase 8B):** protected Prometheus-format request metrics, structured request completion logs, PostgreSQL + Redis readiness, composite hot-path indexes, checksummed database backups and CI-tested isolated restore rehearsal.
+- **Browser Sessions & Scheduler (Phase 8C):** HttpOnly/SameSite refresh-cookie browser flow, refresh rotation/revocation and autonomous SLA scheduler with PostgreSQL advisory locking.
+- **Final Security Hardening (Phase 8D):** Redis-backed distributed AI circuit breaker with local fail-safe fallback, configurable attachment limits, per-workspace storage quota, serialized quota enforcement and filename normalization.
+- **Release Candidate 1 (v0.9.0-rc1):** synchronized release metadata, machine-checkable release invariants and production-stack smoke validation.
 
 AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, the non-AI product remains operational.
 
@@ -65,18 +68,21 @@ pytest -q
 ruff check app tests
 
 cd ../web
-npm ci --no-audit --no-fund
+npm install --no-audit --no-fund
 npm run typecheck
 npm run build
 
 cd ../..
-POSTGRES_PASSWORD=validation-only \
+RELEASE_VERSION=0.9.0-rc1 bash tools/release-check.sh
+POSTGRES_PASSWORD=replace-with-a-long-random-password \
 CSP_ENV_FILE=.env.production.example \
 docker compose -f compose.production.yml config --quiet
 ```
 
-GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck/build, the production compose manifest, shell syntax and a real PostgreSQL backup/restore rehearsal.
+GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck/build, the production compose manifest, shell syntax, a real PostgreSQL backup/restore rehearsal, RC release consistency and a hardened production-stack smoke test.
 
-## Roadmap
+## Release policy
 
-See `docs/architecture.md`. Phase 8A and 8B are complete when this milestone is merged. Remaining production hardening is browser-session hardening, scheduler reliability, backup retention/off-host policy, optional distributed AI breaker work for multi-worker deployments, and final security/release review.
+`v0.9.0-rc1` is a release candidate, not the final production tag. No new feature work is accepted into the RC branch. A production release requires the complete CI matrix to remain green, a successful production-like deployment using `compose.production.yml`, backup/restore verification, smoke checks, and review of any environment-specific deployment findings.
+
+See `docs/architecture.md` and `docs/production.md` for architecture and deployment details.
