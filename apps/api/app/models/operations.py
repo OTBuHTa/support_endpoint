@@ -45,8 +45,12 @@ class SupportTask(TimestampMixin, Base):
         default=TaskStatus.OPEN,
         index=True,
     )
-    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class SLAPolicy(TimestampMixin, Base):
@@ -82,13 +86,23 @@ class TicketSLA(TimestampMixin, Base):
     policy_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("sla_policies.id", ondelete="RESTRICT"), nullable=False
     )
-    first_response_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    first_response_due_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     resolution_due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_response_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    first_response_warning_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    resolution_warning_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    first_response_breached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    first_response_warning_sent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    resolution_warning_sent: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    first_response_breached: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     resolution_breached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
