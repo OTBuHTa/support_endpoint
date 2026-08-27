@@ -5,7 +5,6 @@ against a role name. Roles are a convenience for assigning bundles of
 permissions to a membership.
 """
 
-# --- Permission codes (section E of the project charter) ---
 CLIENTS_READ = "clients.read"
 CLIENTS_WRITE = "clients.write"
 TICKETS_READ = "tickets.read"
@@ -14,6 +13,9 @@ TICKETS_ASSIGN = "tickets.assign"
 TICKETS_UPDATE = "tickets.update"
 TICKETS_CLOSE = "tickets.close"
 TICKETS_INTERNAL_COMMENT = "tickets.internal_comment"
+KNOWLEDGE_READ = "knowledge.read"
+KNOWLEDGE_WRITE = "knowledge.write"
+AI_ASSIST = "ai.assist"
 USERS_MANAGE = "users.manage"
 ROLES_MANAGE = "roles.manage"
 SETTINGS_MANAGE = "settings.manage"
@@ -29,6 +31,9 @@ ALL_PERMISSIONS: tuple[str, ...] = (
     TICKETS_UPDATE,
     TICKETS_CLOSE,
     TICKETS_INTERNAL_COMMENT,
+    KNOWLEDGE_READ,
+    KNOWLEDGE_WRITE,
+    AI_ASSIST,
     USERS_MANAGE,
     ROLES_MANAGE,
     SETTINGS_MANAGE,
@@ -36,16 +41,12 @@ ALL_PERMISSIONS: tuple[str, ...] = (
     REPORTS_READ,
 )
 
-# --- System roles (section E: Client, Operator, Supervisor, Administrator) ---
 ROLE_CLIENT = "client"
 ROLE_OPERATOR = "operator"
 ROLE_SUPERVISOR = "supervisor"
 ROLE_ADMINISTRATOR = "administrator"
 
 SYSTEM_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
-    # Clients only ever act through the client-portal endpoints (Phase 7+),
-    # which are not covered by this generic permission set — a client's
-    # membership intentionally carries no internal-service permissions.
     ROLE_CLIENT: (),
     ROLE_OPERATOR: (
         CLIENTS_READ,
@@ -54,6 +55,8 @@ SYSTEM_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
         TICKETS_ASSIGN,
         TICKETS_UPDATE,
         TICKETS_INTERNAL_COMMENT,
+        KNOWLEDGE_READ,
+        AI_ASSIST,
     ),
     ROLE_SUPERVISOR: (
         CLIENTS_READ,
@@ -64,6 +67,9 @@ SYSTEM_ROLE_PERMISSIONS: dict[str, tuple[str, ...]] = {
         TICKETS_UPDATE,
         TICKETS_CLOSE,
         TICKETS_INTERNAL_COMMENT,
+        KNOWLEDGE_READ,
+        KNOWLEDGE_WRITE,
+        AI_ASSIST,
         REPORTS_READ,
     ),
     ROLE_ADMINISTRATOR: ALL_PERMISSIONS,
