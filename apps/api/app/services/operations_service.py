@@ -59,7 +59,11 @@ class OperationsService:
         )
 
     def attach_sla(self, *, ticket: Ticket) -> None:
-        if self.repo.get_ticket_sla(workspace_id=ticket.workspace_id, ticket_id=ticket.id) is not None:
+        existing = self.repo.get_ticket_sla(
+            workspace_id=ticket.workspace_id,
+            ticket_id=ticket.id,
+        )
+        if existing is not None:
             return
         policy = self.ensure_policy(workspace_id=ticket.workspace_id, priority=ticket.priority)
         base = ticket.created_at or utcnow()
