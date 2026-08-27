@@ -35,7 +35,8 @@ services:
       context: ./apps/api
       args:
         APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
-    env_file: [${CSP_ENV_FILE:-.env.production}]
+    env_file:
+      - "${CSP_ENV_FILE:-.env.production}"
     command: ["alembic", "upgrade", "head"]
     depends_on:
       postgres:
@@ -49,7 +50,8 @@ services:
       args:
         APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
     restart: unless-stopped
-    env_file: [${CSP_ENV_FILE:-.env.production}]
+    env_file:
+      - "${CSP_ENV_FILE:-.env.production}"
     depends_on:
       postgres:
         condition: service_healthy
