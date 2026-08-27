@@ -43,24 +43,26 @@ class LLMGateway:
             cls._opened_until = 0.0
 
     def _assert_circuit_closed(self) -> None:
+        cls = type(self)
         now = time.monotonic()
-        with self._lock:
-            if self._opened_until > now:
+        with cls._lock:
+            if cls._opened_until > now:
                 raise RuntimeError("LLM circuit breaker is open")
-            if self._opened_until and self._opened_until <= now:
-                self._failures = 0
-                self._opened_until = 0.0
+            if cls._opened_until and cls._opened_until <= now:
+                cls._failures = 0
+                cls._opened_until = 0.0
 
     def _record_failure(self) -> None:
-        with self._lock:
-            self._failures += 1
-            if self._failures >= max(1, self.settings.llm_circuit_failure_threshold):
-                self._opened_until = time.monotonic() + max(
+        cls = type(self)
+        with cls._lock:
+            cls._failures += 1
+            if cls._failures >= max(1, self.settings.llm_circuit_failure_threshold):
+                cls._opened_until = time.monotonic() + max(
                     1, self.settings.llm_circuit_cooldown_seconds
                 )
 
     def _record_success(self) -> None:
-        self.reset_circuit()
+        type(self).reset_circuit()
 
     def suggest(self, *, system_prompt: str, user_prompt: str) -> GatewayResult:
         if not self.settings.llm_enabled:
