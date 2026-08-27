@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Customer Service Platform</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 10vh auto; padding: 0 1.5rem; color: #1a1a1a; }
+    code { background: #f0f0f0; padding: 0.15em 0.4em; border-radius: 4px; }
+    .status { margin-top: 1.5rem; font-size: 0.9rem; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Customer Service Platform</h1>
+  <p>The backend API is up. This is a placeholder page — the real operator UI and client portal are built in Phase 7.</p>
+  <p>API docs: <code>/docs</code> — Health: <code>/health</code> — Readiness: <code>/ready</code></p>
+  <div class="status" id="status">Checking backend status…</div>
+  <script>
+    fetch('/health').then(r => r.json()).then(d => {
+      document.getElementById('status').textContent = 'Backend status: ' + d.status + ' (v' + d.version + ')';
+    }).catch(() => {
+      document.getElementById('status').textContent = 'Backend unreachable.';
+    });
+  </script>
+</body>
+</html>
