@@ -36,6 +36,7 @@ jobs:
           rsync -a --delete \
             --exclude='.git/' \
             --exclude='.github/workflows/import-phase4.yml' \
+            --exclude='.github/workflows/ci.yml' \
             "$tmp/csp/" ./
           rm -f customer-service-platform-phase4.zip customer-service-platform.bundle files.zip
 
