@@ -1,5 +1,7 @@
 import re
+import time
 from dataclasses import dataclass
+from threading import Lock
 
 import httpx
 
@@ -23,16 +25,47 @@ def redact_sensitive(text: str) -> str:
 class LLMGateway:
     """Bounded, advisory-only OpenAI-compatible LLM client.
 
-    The gateway returns text only. It exposes no mutation, shell, network-management,
-    database-write, or external-message tool to the model.
+    The gateway returns text only and exposes no mutation or execution tools.
+    Its process-local circuit breaker prevents repeated calls to an unhealthy model endpoint.
     """
+
+    _lock = Lock()
+    _failures = 0
+    _opened_until = 0.0
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
+    @classmethod
+    def reset_circuit(cls) -> None:
+        with cls._lock:
+            cls._failures = 0
+            cls._opened_until = 0.0
+
+    def _assert_circuit_closed(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            if self._opened_until > now:
+                raise RuntimeError("LLM circuit breaker is open")
+            if self._opened_until and self._opened_until <= now:
+                self._failures = 0
+                self._opened_until = 0.0
+
+    def _record_failure(self) -> None:
+        with self._lock:
+            self._failures += 1
+            if self._failures >= max(1, self.settings.llm_circuit_failure_threshold):
+                self._opened_until = time.monotonic() + max(
+                    1, self.settings.llm_circuit_cooldown_seconds
+                )
+
+    def _record_success(self) -> None:
+        self.reset_circuit()
+
     def suggest(self, *, system_prompt: str, user_prompt: str) -> GatewayResult:
         if not self.settings.llm_enabled:
             raise RuntimeError("LLM assistance is disabled")
+        self._assert_circuit_closed()
 
         redacted = redact_sensitive(user_prompt)
         headers: dict[str, str] = {"Content-Type": "application/json"}
@@ -47,15 +80,21 @@ class LLMGateway:
                 {"role": "user", "content": redacted},
             ],
         }
-        with httpx.Client(timeout=self.settings.llm_timeout_seconds) as client:
-            response = client.post(
-                f"{self.settings.llm_base_url.rstrip('/')}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            response.raise_for_status()
-            data = response.json()
-        text = str(data["choices"][0]["message"]["content"]).strip()
-        if not text:
-            raise RuntimeError("LLM returned an empty response")
+        try:
+            with httpx.Client(timeout=self.settings.llm_timeout_seconds) as client:
+                response = client.post(
+                    f"{self.settings.llm_base_url.rstrip('/')}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+            text = str(data["choices"][0]["message"]["content"]).strip()
+            if not text:
+                raise RuntimeError("LLM returned an empty response")
+        except Exception:
+            self._record_failure()
+            raise
+
+        self._record_success()
         return GatewayResult(text=text, redacted_prompt=redacted)
