@@ -1,9 +1,12 @@
+import logging
 import threading
 import time
 from collections import Counter
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+
+logger = logging.getLogger("app.request")
 
 
 class RequestMetrics:
@@ -63,8 +66,18 @@ class RequestMetricsMiddleware(BaseHTTPMiddleware):
             status_code = response.status_code
             return response
         finally:
+            duration_seconds = time.perf_counter() - started_at
             request_metrics.finished(
                 method=request.method,
                 status_code=status_code,
-                duration_seconds=time.perf_counter() - started_at,
+                duration_seconds=duration_seconds,
+            )
+            logger.info(
+                "request_completed",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "status_code": status_code,
+                    "duration_ms": round(duration_seconds * 1000, 2),
+                },
             )
