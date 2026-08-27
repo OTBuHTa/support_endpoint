@@ -39,6 +39,27 @@ jobs:
             "$tmp/csp/" ./
           rm -f customer-service-platform-phase4.zip customer-service-platform.bundle files.zip
 
+      - name: Normalize text whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              cleaned = re.sub(r'[ \t]+(?=\r?$)', '', text, flags=re.MULTILINE)
+              if cleaned != text:
+                  path.write_text(cleaned, encoding='utf-8')
+          PY
+
       - name: Commit imported source
         shell: bash
         run: |
