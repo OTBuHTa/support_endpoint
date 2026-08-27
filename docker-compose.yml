@@ -1,0 +1,84 @@
+name: csp
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: csp
+      POSTGRES_USER: csp
+      POSTGRES_PASSWORD: csp
+    volumes:
+      - csp_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U csp -d csp"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - csp_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./apps/api
+      args:
+        APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
+    restart: unless-stopped
+    env_file:
+      - ${CSP_ENV_FILE:-.env}
+    ports:
+      - "8100:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api/app:/app/app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  migration:
+    profiles: ["tools"]
+    build:
+      context: ./apps/api
+      args:
+        APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
+    env_file:
+      - ${CSP_ENV_FILE:-.env}
+    command:
+      - alembic
+      - upgrade
+      - head
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+    restart: unless-stopped
+    ports:
+      - "8180:80"
+    depends_on:
+      - api
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+
+volumes:
+  csp_postgres_data:
+  csp_redis_data:
