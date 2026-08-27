@@ -1,4 +1,7 @@
-from app.ai.gateway import GatewayResult, redact_sensitive
+import pytest
+
+from app.ai.gateway import GatewayResult, LLMGateway, redact_sensitive
+from app.core.config import Settings
 from app.models.ticket_enums import TicketStatus
 from tests.conftest import register_and_create_workspace
 
@@ -38,6 +41,79 @@ def test_redaction_removes_email_and_phone_before_llm():
     assert "+420 777 123 456" not in value
     assert "[REDACTED_EMAIL]" in value
     assert "[REDACTED_PHONE]" in value
+
+
+def test_gateway_transmits_redacted_prompt(monkeypatch):
+    captured: dict = {}
+
+    class FakeResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"choices": [{"message": {"content": "safe proposal"}}]}
+
+    class RecordingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, url, *, headers, json):
+            captured["url"] = url
+            captured["json"] = json
+            return FakeResponse()
+
+    LLMGateway.reset_circuit()
+    monkeypatch.setattr("app.ai.gateway.httpx.Client", RecordingClient)
+    gateway = LLMGateway(Settings(LLM_ENABLED=True))
+    result = gateway.suggest(
+        system_prompt="advisory only",
+        user_prompt="Contact jane@example.com at +420 777 123 456",
+    )
+    sent = captured["json"]["messages"][1]["content"]
+    assert "jane@example.com" not in sent
+    assert "+420 777 123 456" not in sent
+    assert "[REDACTED_EMAIL]" in sent
+    assert "[REDACTED_PHONE]" in sent
+    assert result.text == "safe proposal"
+
+
+def test_circuit_breaker_is_shared_across_gateway_instances(monkeypatch):
+    class BrokenClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def post(self, *args, **kwargs):
+            raise RuntimeError("model endpoint down")
+
+    settings = Settings(
+        LLM_ENABLED=True,
+        LLM_CIRCUIT_FAILURE_THRESHOLD=2,
+        LLM_CIRCUIT_COOLDOWN_SECONDS=30,
+    )
+    LLMGateway.reset_circuit()
+    monkeypatch.setattr("app.ai.gateway.httpx.Client", BrokenClient)
+    first = LLMGateway(settings)
+    second = LLMGateway(settings)
+
+    with pytest.raises(RuntimeError, match="model endpoint down"):
+        first.suggest(system_prompt="x", user_prompt="one")
+    with pytest.raises(RuntimeError, match="model endpoint down"):
+        first.suggest(system_prompt="x", user_prompt="two")
+    with pytest.raises(RuntimeError, match="circuit breaker is open"):
+        second.suggest(system_prompt="x", user_prompt="three")
+    LLMGateway.reset_circuit()
 
 
 def test_knowledge_article_crud_and_workspace_idor(client):
