@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from sqlalchemy.orm import Session
@@ -66,21 +67,41 @@ class OperationsService:
             resolution_due_at=base + timedelta(minutes=policy.resolution_minutes),
         )
 
-    def mark_first_response(self, *, workspace_id: str, ticket_id: str) -> None:
-        item = self.repo.get_ticket_sla(workspace_id=workspace_id, ticket_id=ticket_id)
-        if item is None or item.first_response_at is not None:
-            return
-        item.first_response_at = utcnow()
-        item.first_response_breached = item.first_response_at > item.first_response_due_at
-        self.db.add(item)
+    def materialize_workspace_slas(self, *, workspace_id: str) -> None:
+        for ticket in self.repo.tickets_without_sla(workspace_id=workspace_id):
+            self.attach_sla(ticket=ticket)
 
-    def mark_resolved(self, *, workspace_id: str, ticket_id: str) -> None:
-        item = self.repo.get_ticket_sla(workspace_id=workspace_id, ticket_id=ticket_id)
-        if item is None or item.resolved_at is not None:
-            return
-        item.resolved_at = utcnow()
-        item.resolution_breached = item.resolved_at > item.resolution_due_at
+    def _refresh_sla_from_history(self, *, ticket: Ticket):
+        item = self.repo.get_ticket_sla(workspace_id=ticket.workspace_id, ticket_id=ticket.id)
+        if item is None:
+            self.attach_sla(ticket=ticket)
+            item = self.repo.get_ticket_sla(workspace_id=ticket.workspace_id, ticket_id=ticket.id)
+        if item is None:
+            raise NotFoundError("Ticket SLA not found")
+
+        if item.first_response_at is None:
+            first_outbound = self.repo.first_outbound_at(
+                workspace_id=ticket.workspace_id, ticket_id=ticket.id
+            )
+            if first_outbound is not None:
+                item.first_response_at = first_outbound
+                item.first_response_breached = first_outbound > item.first_response_due_at
+
+        if item.resolved_at is None:
+            for event in self.repo.ticket_status_events(
+                workspace_id=ticket.workspace_id, ticket_id=ticket.id
+            ):
+                try:
+                    metadata = json.loads(event.metadata_json)
+                except (TypeError, json.JSONDecodeError):
+                    continue
+                if metadata.get("to") in {"resolved", "closed"}:
+                    item.resolved_at = event.created_at
+                    item.resolution_breached = event.created_at > item.resolution_due_at
+                    break
+
         self.db.add(item)
+        return item
 
     def create_task(
         self,
@@ -190,13 +211,14 @@ class OperationsService:
         return policy
 
     def list_policies(self, *, workspace_id: str) -> list[SLAPolicy]:
+        self.materialize_workspace_slas(workspace_id=workspace_id)
+        self.db.flush()
         return self.repo.list_policies(workspace_id=workspace_id)
 
     def get_ticket_sla(self, *, workspace_id: str, ticket_id: str):
-        self._ticket(workspace_id=workspace_id, ticket_id=ticket_id)
-        item = self.repo.get_ticket_sla(workspace_id=workspace_id, ticket_id=ticket_id)
-        if item is None:
-            raise NotFoundError("Ticket SLA not found")
+        ticket = self._ticket(workspace_id=workspace_id, ticket_id=ticket_id)
+        item = self._refresh_sla_from_history(ticket=ticket)
+        self.db.commit()
         return item
 
     def notify_ticket_assignment(self, *, ticket: Ticket, user_id: str | None) -> None:
@@ -211,13 +233,20 @@ class OperationsService:
         )
 
     def evaluate_sla(self, *, workspace_id: str) -> tuple[int, int, int]:
+        self.materialize_workspace_slas(workspace_id=workspace_id)
+        self.db.flush()
         now = utcnow()
         evaluated = warnings = breaches = 0
         for item in self.repo.list_active_slas(workspace_id=workspace_id):
+            ticket = self.tickets.get_in_workspace(
+                workspace_id=workspace_id, ticket_id=item.ticket_id
+            )
+            if ticket is None:
+                continue
+            item = self._refresh_sla_from_history(ticket=ticket)
             evaluated += 1
             policy = self.db.get(SLAPolicy, item.policy_id)
-            ticket = self.tickets.get_in_workspace(workspace_id=workspace_id, ticket_id=item.ticket_id)
-            if policy is None or ticket is None:
+            if policy is None:
                 continue
             user_id = ticket.assignee_user_id or ticket.creator_user_id
             warning_delta = timedelta(minutes=policy.warning_minutes_before)
@@ -240,7 +269,10 @@ class OperationsService:
                     item.resolution_breached = True
                     breaches += 1
                     self._sla_notification(ticket, user_id, "Resolution SLA breached", True)
-                elif now >= item.resolution_due_at - warning_delta and not item.resolution_warning_sent:
+                elif (
+                    now >= item.resolution_due_at - warning_delta
+                    and not item.resolution_warning_sent
+                ):
                     item.resolution_warning_sent = True
                     warnings += 1
                     self._sla_notification(ticket, user_id, "Resolution SLA approaching", False)
