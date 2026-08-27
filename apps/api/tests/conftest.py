@@ -33,6 +33,9 @@ class FakeRedis:
     def expire(self, key: str, seconds: int) -> None:
         return None
 
+    def ping(self) -> bool:
+        return True
+
 
 @pytest.fixture()
 def db_session_factory():

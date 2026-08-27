@@ -6,7 +6,7 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 
 ## Current milestone
 
-`v0.7.0-alpha` — **Phase 7B: Client Identity + Customer Portal** on top of the completed operator Control Center.
+`v0.8.1-alpha` — **Phase 8B: Observability + DB performance + tested backup/restore**, on top of the hardened production runtime from Phase 8A.
 
 ## Architecture principles
 
@@ -18,6 +18,7 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - Internal notes are physically separate from customer-visible messages and are not exposed through portal APIs.
 - Tasks, SLA state and notifications are deterministic application records; AI cannot execute them.
 - AI assistance is advisory only and neither frontend calls the LLM directly.
+- Production configuration fails closed and the API is not directly exposed on a host port.
 
 ## Implemented
 
@@ -29,25 +30,29 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - **Deterministic Operations (Phase 6B):** ticket tasks, per-priority SLA policies, replayable ticket SLA clocks, warning/breach evaluation and user-scoped notifications (ADR-008).
 - **Operator Control Center (Phase 7A):** React 18 + Vite + TypeScript operator UI, workspace selection, permission-aware navigation and frontend CI (ADR-009).
 - **Client Portal (Phase 7B):** explicit User↔Client binding, ownership-scoped portal accounts/tickets/messages, customer ticket creation and inbound replies, cross-user IDOR regressions, and a separate `/portal.html` Vite entrypoint (ADR-010).
+- **Runtime & Edge Hardening (Phase 8A):** production fail-closed settings, private backend network, no direct API host port, read-only application containers, reduced capabilities, production security headers, disabled API docs and production manifest CI.
+- **Observability & Recovery (Phase 8B):** protected Prometheus-format request metrics, structured request completion logs, PostgreSQL + Redis readiness, composite hot-path indexes, checksummed database backups and CI-tested isolated restore rehearsal.
 
 AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, the non-AI product remains operational.
 
-## Quick start
+## Development quick start
 
 1. Copy `.env.example` to `.env` and replace `JWT_SECRET`.
 2. Run `docker compose up --build -d` (or `make up`).
 3. Run `docker compose --profile tools run --rm --build migration` (or `make migrate`).
-4. Open `http://localhost:8180` for the operator UI, `http://localhost:8180/portal.html` for the customer portal, or `http://localhost:8100/docs` for the API.
+4. Open `http://localhost:8180` for the operator UI, `http://localhost:8180/portal.html` for the customer portal, or `http://localhost:8100/docs` for the development API.
 5. Call `POST /api/v1/auth/bootstrap` once to create the initial owner/workspace if this is a fresh install.
 6. A customer first registers a normal User account; an authorized operator explicitly links that login to the intended Client record with the portal-link endpoint.
 7. Set `BOOTSTRAP_ENABLED=false` after initialization before external exposure.
 8. Keep `LLM_ENABLED=false` until the local model endpoint is intentionally enabled and validated.
 
-## Ports (`srv-ai`)
+For production, use `.env.production`, `compose.production.yml`, and `docs/production.md`; do not use the development port exposure as the external deployment model.
+
+## Development ports (`srv-ai`)
 
 | Service | Host port | Notes |
 |---|---|---|
-| api | 8100 → 8000 | Does not collide with AI-project-SRV's 8000/8080 |
+| api | 8100 → 8000 | Development only; production does not publish the API port |
 | web | 8180 → 80 | Operator + customer Vite bundles served by nginx |
 
 Docker network subnet: `172.31.0.0/24` (distinct from AI-project-SRV's `172.30.0.0/29`).
@@ -63,10 +68,15 @@ cd ../web
 npm ci --no-audit --no-fund
 npm run typecheck
 npm run build
+
+cd ../..
+POSTGRES_PASSWORD=validation-only \
+CSP_ENV_FILE=.env.production.example \
+docker compose -f compose.production.yml config --quiet
 ```
 
-GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck and multi-entry production Vite build.
+GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck/build, the production compose manifest, shell syntax and a real PostgreSQL backup/restore rehearsal.
 
 ## Roadmap
 
-See `docs/architecture.md`. Phase 7 is complete after the operator console and ownership-scoped customer portal. Phase 8 performs production hardening: security review, browser-session hardening, observability/performance, scheduler/deployment work, distributed breaker evaluation, storage evaluation and final release documentation.
+See `docs/architecture.md`. Phase 8A and 8B are complete when this milestone is merged. Remaining production hardening is browser-session hardening, scheduler reliability, backup retention/off-host policy, optional distributed AI breaker work for multi-worker deployments, and final security/release review.

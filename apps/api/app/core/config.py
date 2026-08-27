@@ -70,6 +70,8 @@ class Settings(BaseSettings):
             errors.append("SECURE_HEADERS_HSTS_ENABLED must be true")
         if not self.cors_origins_list:
             errors.append("CORS_ALLOW_ORIGINS must not be empty")
+        if len(self.metrics_bearer_token) < 32:
+            errors.append("METRICS_BEARER_TOKEN must contain at least 32 characters")
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
         return self
