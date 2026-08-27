@@ -70,6 +70,28 @@ services:
       - "host.docker.internal:host-gateway"
     networks: [backend]
 
+  sla-scheduler:
+    build:
+      context: ./apps/api
+      args:
+        APP_BUILD_REVISION: ${CSP_BUILD_REVISION:-unknown}
+    restart: unless-stopped
+    env_file:
+      - "${CSP_ENV_FILE:-.env.production}"
+    command: ["python", "-m", "app.workers.sla_scheduler"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    networks: [backend]
+
   web:
     build:
       context: ./apps/web

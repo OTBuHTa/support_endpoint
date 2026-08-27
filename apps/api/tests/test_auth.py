@@ -43,7 +43,6 @@ def test_refresh_rotates_token_and_invalidates_old_one(client):
     new_tokens = refreshed.json()
     assert new_tokens["refresh_token"] != tokens["refresh_token"]
 
-    # The old refresh token was single-use and is now revoked.
     reuse_attempt = client.post(
         "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
@@ -62,6 +61,35 @@ def test_logout_revokes_refresh_token(client):
         "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
     )
     assert reuse_attempt.status_code == 401
+
+
+def test_browser_login_refresh_and_logout_use_httponly_cookie(client):
+    bootstrap_and_login(client, email="owner@example.com", workspace_name="Acme")
+
+    login = client.post(
+        "/api/v1/auth/browser/login",
+        json={"email": "owner@example.com", "password": "correct-horse-battery-staple"},
+    )
+    assert login.status_code == 200
+    assert "access_token" in login.json()
+    assert "refresh_token" not in login.json()
+    set_cookie = login.headers["set-cookie"].lower()
+    assert "csp_refresh=" in set_cookie
+    assert "httponly" in set_cookie
+    assert "samesite=strict" in set_cookie
+    assert "path=/api/v1/auth/browser" in set_cookie
+
+    first_cookie = client.cookies.get("csp_refresh")
+    assert first_cookie
+    refreshed = client.post("/api/v1/auth/browser/refresh")
+    assert refreshed.status_code == 200
+    assert "refresh_token" not in refreshed.json()
+    second_cookie = client.cookies.get("csp_refresh")
+    assert second_cookie and second_cookie != first_cookie
+
+    logout = client.post("/api/v1/auth/browser/logout")
+    assert logout.status_code == 204
+    assert client.post("/api/v1/auth/browser/refresh").status_code == 401
 
 
 def test_protected_endpoint_rejects_missing_token(client):

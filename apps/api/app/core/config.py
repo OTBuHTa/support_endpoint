@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     forwarded_allow_ips: str = Field(default="127.0.0.1", alias="FORWARDED_ALLOW_IPS")
     cors_allow_origins: str = Field(default="http://localhost:8180", alias="CORS_ALLOW_ORIGINS")
     metrics_bearer_token: str = Field(default="", alias="METRICS_BEARER_TOKEN")
+    sla_scheduler_interval_seconds: int = Field(default=60, alias="SLA_SCHEDULER_INTERVAL_SECONDS")
 
     llm_enabled: bool = Field(default=False, alias="LLM_ENABLED")
     llm_base_url: str = Field(default="http://host.docker.internal:11434/v1", alias="LLM_BASE_URL")
@@ -72,6 +73,8 @@ class Settings(BaseSettings):
             errors.append("CORS_ALLOW_ORIGINS must not be empty")
         if len(self.metrics_bearer_token) < 32:
             errors.append("METRICS_BEARER_TOKEN must contain at least 32 characters")
+        if self.sla_scheduler_interval_seconds < 10:
+            errors.append("SLA_SCHEDULER_INTERVAL_SECONDS must be at least 10")
         if errors:
             raise ValueError("Unsafe production configuration: " + "; ".join(errors))
         return self

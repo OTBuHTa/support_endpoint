@@ -1,54 +1,73 @@
 import type { TokenPair } from './types'
 
 const ACCESS = 'csp.access_token'
-const REFRESH = 'csp.refresh_token'
+
+type AccessTokenResponse = {
+  access_token: string
+  token_type: string
+}
 
 export function tokenPair(): TokenPair | null {
   const access_token = sessionStorage.getItem(ACCESS)
-  const refresh_token = sessionStorage.getItem(REFRESH)
-  return access_token && refresh_token ? { access_token, refresh_token } : null
+  return access_token ? { access_token, refresh_token: '' } : null
 }
 
-export function saveTokens(tokens: TokenPair) {
+export function saveTokens(tokens: Pick<TokenPair, 'access_token'>) {
   sessionStorage.setItem(ACCESS, tokens.access_token)
-  sessionStorage.setItem(REFRESH, tokens.refresh_token)
 }
 
 export function clearTokens() {
   sessionStorage.removeItem(ACCESS)
-  sessionStorage.removeItem(REFRESH)
 }
 
 async function refreshTokens(): Promise<boolean> {
-  const refresh_token = sessionStorage.getItem(REFRESH)
-  if (!refresh_token) return false
-  const response = await fetch('/api/v1/auth/refresh', {
+  const response = await fetch('/api/v1/auth/browser/refresh', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token }),
+    credentials: 'same-origin',
   })
   if (!response.ok) return false
-  saveTokens((await response.json()) as TokenPair)
+  const tokens = (await response.json()) as AccessTokenResponse
+  saveTokens(tokens)
   return true
 }
 
-export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const access = sessionStorage.getItem(ACCESS)
-  const headers = new Headers(init.headers)
-  if (!headers.has('Content-Type') && init.body) headers.set('Content-Type', 'application/json')
-  if (access) headers.set('Authorization', `Bearer ${access}`)
-  const response = await fetch(path, { ...init, headers })
-  if (response.status === 401 && retry && (await refreshTokens())) return api<T>(path, init, false)
-  if (!response.ok) {
-    let detail = `${response.status} ${response.statusText}`
-    try {
-      const body = (await response.json()) as { detail?: string }
-      if (body.detail) detail = body.detail
-    } catch {
-      // Preserve HTTP status if the response is not JSON.
-    }
-    throw new Error(detail)
+async function parseError(response: Response): Promise<Error> {
+  let detail = `${response.status} ${response.statusText}`
+  try {
+    const body = (await response.json()) as { detail?: string }
+    if (body.detail) detail = body.detail
+  } catch {
+    // Preserve HTTP status if the response is not JSON.
   }
+  return new Error(detail)
+}
+
+export async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  let requestPath = path
+  let requestInit = init
+
+  if (path === '/api/v1/auth/login') {
+    requestPath = '/api/v1/auth/browser/login'
+  } else if (path === '/api/v1/auth/logout') {
+    requestPath = '/api/v1/auth/browser/logout'
+    requestInit = { method: 'POST' }
+  }
+
+  const access = sessionStorage.getItem(ACCESS)
+  const headers = new Headers(requestInit.headers)
+  if (!headers.has('Content-Type') && requestInit.body) headers.set('Content-Type', 'application/json')
+  if (access) headers.set('Authorization', `Bearer ${access}`)
+
+  const response = await fetch(requestPath, {
+    ...requestInit,
+    headers,
+    credentials: 'same-origin',
+  })
+
+  if (response.status === 401 && retry && requestPath !== '/api/v1/auth/browser/login') {
+    if (await refreshTokens()) return api<T>(path, init, false)
+  }
+  if (!response.ok) throw await parseError(response)
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
