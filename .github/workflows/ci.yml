@@ -114,7 +114,7 @@ jobs:
           CSP_ENV_FILE: .env.production.example
         run: docker compose -f compose.production.yml config --quiet
       - name: Validate operations and release scripts
-        run: bash -n tools/backup.sh tools/restore-verify.sh tools/release-check.sh tools/smoke-production.sh
+        run: bash -n tools/backup.sh tools/restore-verify.sh tools/release-check.sh tools/smoke-production.sh tools/deploy-production.sh
       - name: Release consistency
         env:
           RELEASE_VERSION: 0.9.0-rc1
