@@ -110,18 +110,22 @@ jobs:
           persist-credentials: false
       - name: Validate production compose
         env:
-          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_PASSWORD: replace-with-a-long-random-password
           CSP_ENV_FILE: .env.production.example
         run: docker compose -f compose.production.yml config --quiet
-      - name: Validate operations scripts
-        run: bash -n tools/backup.sh tools/restore-verify.sh
+      - name: Validate operations and release scripts
+        run: bash -n tools/backup.sh tools/restore-verify.sh tools/release-check.sh tools/smoke-production.sh
+      - name: Release consistency
+        env:
+          RELEASE_VERSION: 0.9.0-rc1
+        run: bash tools/release-check.sh
 
   backup-restore:
     name: PostgreSQL backup / restore rehearsal
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_PASSWORD: replace-with-a-long-random-password
       CSP_ENV_FILE: .env.production.example
     steps:
       - name: Checkout
@@ -139,6 +143,38 @@ jobs:
           bash tools/backup.sh
           backup_file="$(find backups -name '*.dump' -type f | sort | tail -1)"
           bash tools/restore-verify.sh "$backup_file"
+      - name: Cleanup
+        if: always()
+        run: docker compose -f compose.production.yml down -v
+
+  release-smoke:
+    name: RC1 hardened production smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: replace-with-a-long-random-password
+      CSP_ENV_FILE: .env.production.example
+      CSP_WEB_BIND: 127.0.0.1:18180
+      CSP_SMOKE_BASE_URL: http://127.0.0.1:18180
+      RELEASE_VERSION: 0.9.0-rc1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Release consistency
+        run: bash tools/release-check.sh
+      - name: Start hardened production stack
+        env:
+          CSP_BUILD_REVISION: ${{ github.sha }}
+        run: docker compose -f compose.production.yml up -d --build postgres redis migration api sla-scheduler web
+      - name: Smoke production edge
+        run: bash tools/smoke-production.sh
+      - name: Capture stack state on failure
+        if: failure()
+        run: |
+          docker compose -f compose.production.yml ps -a
+          docker compose -f compose.production.yml logs --no-color --tail=200 migration api sla-scheduler web postgres redis
       - name: Cleanup
         if: always()
         run: docker compose -f compose.production.yml down -v
