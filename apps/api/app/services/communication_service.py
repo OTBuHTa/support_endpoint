@@ -1,7 +1,9 @@
 import hashlib
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.exceptions import NotFoundError, ValidationAppError
 from app.models.communication import (
     Attachment,
@@ -10,16 +12,16 @@ from app.models.communication import (
     Message,
     MessageDirection,
 )
+from app.models.workspace import Workspace
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.communication_repo import CommunicationRepository
 from app.repositories.ticket_repo import TicketRepository
 
-MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
-
 
 class CommunicationService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, settings: Settings | None = None) -> None:
         self.db = db
+        self.settings = settings or get_settings()
         self.repo = CommunicationRepository(db)
         self.tickets = TicketRepository(db)
         self.audit = AuditRepository(db)
@@ -115,11 +117,7 @@ class CommunicationService:
         body: str,
         external_message_ref: str | None,
     ) -> Message:
-        """Record an already-received customer message.
-
-        Phase 5 does not implement external channel delivery or polling;
-        channel adapters can call this deterministic service in Phase 6+.
-        """
+        """Record an already-received customer message."""
         conversation = self._conversation(
             workspace_id=workspace_id, ticket_id=ticket_id, conversation_id=conversation_id
         )
@@ -175,15 +173,32 @@ class CommunicationService:
         self._ticket(workspace_id=workspace_id, ticket_id=ticket_id)
         return self.repo.list_notes(workspace_id=workspace_id, ticket_id=ticket_id)
 
-    def _validate_attachment(self, *, filename: str, content: bytes) -> None:
-        if not filename or len(filename) > 255:
+    @staticmethod
+    def _safe_filename(filename: str) -> str:
+        normalized = filename.replace("\\", "/").split("/")[-1].strip()
+        normalized = "".join(ch for ch in normalized if ch.isprintable() and ch not in "\r\n\x00")
+        if not normalized or normalized in {".", ".."} or len(normalized) > 255:
             raise ValidationAppError(
-                "attachment filename is required and must be <= 255 characters"
+                "attachment filename is required and must be <= 255 printable characters"
             )
+        return normalized
+
+    def _validate_attachment(self, *, workspace_id: str, filename: str, content: bytes) -> str:
+        safe_filename = self._safe_filename(filename)
         if not content:
             raise ValidationAppError("attachment is empty")
-        if len(content) > MAX_ATTACHMENT_BYTES:
-            raise ValidationAppError("attachment exceeds the 5 MiB Phase 5 limit")
+        if len(content) > self.settings.attachment_max_bytes:
+            raise ValidationAppError("attachment exceeds the configured per-file size limit")
+
+        workspace = self.db.scalar(
+            select(Workspace).where(Workspace.id == workspace_id).with_for_update()
+        )
+        if workspace is None:
+            raise NotFoundError("Workspace not found")
+        used = self.repo.attachment_usage_bytes(workspace_id=workspace_id)
+        if used + len(content) > self.settings.attachment_workspace_quota_bytes:
+            raise ValidationAppError("workspace attachment storage quota exceeded")
+        return safe_filename
 
     def attach_to_message(
         self,
@@ -205,11 +220,13 @@ class CommunicationService:
         )
         if message is None:
             raise NotFoundError("Message not found")
-        self._validate_attachment(filename=filename, content=content)
+        safe_filename = self._validate_attachment(
+            workspace_id=workspace_id, filename=filename, content=content
+        )
         item = self.repo.create_attachment(
             workspace_id=workspace_id,
             message_id=message.id,
-            filename=filename,
+            filename=safe_filename,
             content_type=content_type or "application/octet-stream",
             content=content,
             sha256=hashlib.sha256(content).hexdigest(),
@@ -240,11 +257,13 @@ class CommunicationService:
         note = self.repo.get_note(workspace_id=workspace_id, ticket_id=ticket_id, note_id=note_id)
         if note is None:
             raise NotFoundError("Internal note not found")
-        self._validate_attachment(filename=filename, content=content)
+        safe_filename = self._validate_attachment(
+            workspace_id=workspace_id, filename=filename, content=content
+        )
         item = self.repo.create_attachment(
             workspace_id=workspace_id,
             internal_note_id=note.id,
-            filename=filename,
+            filename=safe_filename,
             content_type=content_type or "application/octet-stream",
             content=content,
             sha256=hashlib.sha256(content).hexdigest(),
