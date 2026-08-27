@@ -1,6 +1,14 @@
 from app.db.base import Base  # noqa: F401
 from app.models.audit import AuditEvent  # noqa: F401
 from app.models.client import Client, ClientContact, ClientOrganization  # noqa: F401
+from app.models.communication import (  # noqa: F401
+    Attachment,
+    Conversation,
+    ConversationChannel,
+    InternalNote,
+    Message,
+    MessageDirection,
+)
 from app.models.rbac import Permission, Role, RolePermission  # noqa: F401
 from app.models.session import RefreshSession  # noqa: F401
 from app.models.ticket import (  # noqa: F401
@@ -33,4 +41,10 @@ __all__ = [
     "Ticket",
     "TicketAssignment",
     "TicketTag",
+    "Conversation",
+    "ConversationChannel",
+    "Message",
+    "MessageDirection",
+    "InternalNote",
+    "Attachment",
 ]
