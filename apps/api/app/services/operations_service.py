@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,10 @@ _DEFAULT_SLA: dict[TicketPriority, tuple[int, int, int]] = {
     TicketPriority.HIGH: (60, 480, 15),
     TicketPriority.URGENT: (15, 240, 5),
 }
+
+
+def _utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 class OperationsService:
@@ -85,7 +89,9 @@ class OperationsService:
             )
             if first_outbound is not None:
                 item.first_response_at = first_outbound
-                item.first_response_breached = first_outbound > item.first_response_due_at
+                item.first_response_breached = _utc(first_outbound) > _utc(
+                    item.first_response_due_at
+                )
 
         if item.resolved_at is None:
             for event in self.repo.ticket_status_events(
@@ -97,7 +103,9 @@ class OperationsService:
                     continue
                 if metadata.get("to") in {"resolved", "closed"}:
                     item.resolved_at = event.created_at
-                    item.resolution_breached = event.created_at > item.resolution_due_at
+                    item.resolution_breached = _utc(event.created_at) > _utc(
+                        item.resolution_due_at
+                    )
                     break
 
         self.db.add(item)
@@ -250,29 +258,26 @@ class OperationsService:
                 continue
             user_id = ticket.assignee_user_id or ticket.creator_user_id
             warning_delta = timedelta(minutes=policy.warning_minutes_before)
+            now_utc = _utc(now)
 
             if item.first_response_at is None:
-                if now >= item.first_response_due_at and not item.first_response_breached:
+                first_due = _utc(item.first_response_due_at)
+                if now_utc >= first_due and not item.first_response_breached:
                     item.first_response_breached = True
                     breaches += 1
                     self._sla_notification(ticket, user_id, "First response SLA breached", True)
-                elif (
-                    now >= item.first_response_due_at - warning_delta
-                    and not item.first_response_warning_sent
-                ):
+                elif now_utc >= first_due - warning_delta and not item.first_response_warning_sent:
                     item.first_response_warning_sent = True
                     warnings += 1
                     self._sla_notification(ticket, user_id, "First response SLA approaching", False)
 
             if item.resolved_at is None:
-                if now >= item.resolution_due_at and not item.resolution_breached:
+                resolution_due = _utc(item.resolution_due_at)
+                if now_utc >= resolution_due and not item.resolution_breached:
                     item.resolution_breached = True
                     breaches += 1
                     self._sla_notification(ticket, user_id, "Resolution SLA breached", True)
-                elif (
-                    now >= item.resolution_due_at - warning_delta
-                    and not item.resolution_warning_sent
-                ):
+                elif now_utc >= resolution_due - warning_delta and not item.resolution_warning_sent:
                     item.resolution_warning_sent = True
                     warnings += 1
                     self._sla_notification(ticket, user_id, "Resolution SLA approaching", False)
