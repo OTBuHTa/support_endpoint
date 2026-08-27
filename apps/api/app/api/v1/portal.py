@@ -59,7 +59,8 @@ def link_client_user(
 def portal_accounts(
     current_user: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> list[PortalAccountResponse]:
-    return [PortalAccountResponse(**item) for item in PortalService(db).accounts(user_id=current_user.id)]
+    items = PortalService(db).accounts(user_id=current_user.id)
+    return [PortalAccountResponse(**item) for item in items]
 
 
 @router.get("/portal/accounts/{link_id}/tickets", response_model=list[PortalTicketResponse])
