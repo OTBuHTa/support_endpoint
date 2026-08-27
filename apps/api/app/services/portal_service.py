@@ -7,7 +7,6 @@ from app.models.communication import Conversation, ConversationChannel, Message,
 from app.models.portal import ClientUserLink
 from app.models.ticket import Ticket
 from app.models.ticket_enums import TicketPriority
-from app.models.user import User
 from app.models.workspace import Workspace
 from app.repositories.audit_repo import AuditRepository
 from app.repositories.user_repo import UserRepository
