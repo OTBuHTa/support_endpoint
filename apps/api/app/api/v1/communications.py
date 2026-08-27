@@ -19,7 +19,7 @@ from app.schemas.communication import (
     MessageCreateRequest,
     MessageResponse,
 )
-from app.services.communication_service import CommunicationService, MAX_ATTACHMENT_BYTES
+from app.services.communication_service import MAX_ATTACHMENT_BYTES, CommunicationService
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/tickets/{ticket_id}", tags=["communications"]
