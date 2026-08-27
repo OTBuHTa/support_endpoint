@@ -1,6 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.models.audit import AuditEvent
+from app.models.communication import Conversation, Message, MessageDirection
 from app.models.operations import Notification, NotificationType, SLAPolicy, SupportTask, TicketSLA
 from app.models.ticket_enums import TicketPriority
 
@@ -91,6 +93,34 @@ class OperationsRepository:
         stmt = select(TicketSLA).where(
             TicketSLA.workspace_id == workspace_id,
             (TicketSLA.first_response_at.is_(None)) | (TicketSLA.resolved_at.is_(None)),
+        )
+        return list(self.db.scalars(stmt))
+
+    def first_outbound_at(self, *, workspace_id: str, ticket_id: str):
+        stmt = (
+            select(Message.created_at)
+            .join(Conversation, Conversation.id == Message.conversation_id)
+            .where(
+                Conversation.workspace_id == workspace_id,
+                Conversation.ticket_id == ticket_id,
+                Message.workspace_id == workspace_id,
+                Message.direction == MessageDirection.OUTBOUND,
+            )
+            .order_by(Message.created_at.asc())
+            .limit(1)
+        )
+        return self.db.scalar(stmt)
+
+    def ticket_status_events(self, *, workspace_id: str, ticket_id: str) -> list[AuditEvent]:
+        stmt = (
+            select(AuditEvent)
+            .where(
+                AuditEvent.workspace_id == workspace_id,
+                AuditEvent.resource_type == "ticket",
+                AuditEvent.resource_id == ticket_id,
+                AuditEvent.action == "servicedesk.ticket.status_changed",
+            )
+            .order_by(AuditEvent.created_at.asc())
         )
         return list(self.db.scalars(stmt))
 
