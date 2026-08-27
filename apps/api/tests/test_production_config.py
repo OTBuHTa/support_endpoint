@@ -1,8 +1,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import DEFAULT_JWT_SECRET, Settings
 import app.main as main_module
+from app.core.config import DEFAULT_JWT_SECRET, Settings
 
 
 def production_settings(**overrides) -> Settings:
