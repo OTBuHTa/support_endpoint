@@ -54,7 +54,11 @@ def get_article(
     return KnowledgeArticleResponse.model_validate(item)
 
 
-@router.post("/tickets/{ticket_id}/ai/suggestions", response_model=AISuggestionResponse, status_code=201)
+@router.post(
+    "/tickets/{ticket_id}/ai/suggestions",
+    response_model=AISuggestionResponse,
+    status_code=201,
+)
 def create_ai_suggestion(
     workspace_id: str,
     ticket_id: str,
