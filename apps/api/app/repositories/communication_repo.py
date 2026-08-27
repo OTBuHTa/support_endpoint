@@ -1,7 +1,13 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.communication import Attachment, Conversation, InternalNote, Message, MessageDirection
+from app.models.communication import (
+    Attachment,
+    Conversation,
+    InternalNote,
+    Message,
+    MessageDirection,
+)
 
 
 class CommunicationRepository:
