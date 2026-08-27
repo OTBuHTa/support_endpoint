@@ -35,9 +35,8 @@ class RequestMetrics:
             "# TYPE csp_http_requests_total counter",
         ]
         for (method, status_class), count in sorted(requests):
-            lines.append(
-                f'csp_http_requests_total{{method="{method}",status_class="{status_class}"}} {count}'
-            )
+            labels = f'method="{method}",status_class="{status_class}"'
+            lines.append(f"csp_http_requests_total{{{labels}}} {count}")
         lines.extend(
             [
                 "# HELP csp_http_requests_in_flight Current in-flight HTTP requests.",
