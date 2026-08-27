@@ -9,6 +9,7 @@ from app.models.communication import (  # noqa: F401
     Message,
     MessageDirection,
 )
+from app.models.knowledge import AISuggestion, KnowledgeArticle  # noqa: F401
 from app.models.rbac import Permission, Role, RolePermission  # noqa: F401
 from app.models.session import RefreshSession  # noqa: F401
 from app.models.ticket import (  # noqa: F401
@@ -47,4 +48,6 @@ __all__ = [
     "MessageDirection",
     "InternalNote",
     "Attachment",
+    "KnowledgeArticle",
+    "AISuggestion",
 ]
