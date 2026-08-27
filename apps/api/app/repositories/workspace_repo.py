@@ -34,6 +34,9 @@ class WorkspaceRepository:
         self.db.flush()
         return workspace
 
+    def list_all(self) -> list[Workspace]:
+        return list(self.db.scalars(select(Workspace).order_by(Workspace.id)))
+
     def list_for_user(self, user_id: str) -> list[Workspace]:
         stmt = (
             select(Workspace)
