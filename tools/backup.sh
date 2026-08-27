@@ -13,7 +13,7 @@ checksum_file="${backup_file}.sha256"
 export CSP_ENV_FILE="$env_file"
 
 docker compose -f "$compose_file" exec -T postgres \
-  sh -ceu 'pg_dump --format=custom --no-owner --no-acl --dbname="$POSTGRES_DB"' \
+  sh -ceu 'pg_dump --username="$POSTGRES_USER" --format=custom --no-owner --no-acl --dbname="$POSTGRES_DB"' \
   > "$backup_file"
 
 if [[ ! -s "$backup_file" ]]; then
