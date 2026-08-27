@@ -36,3 +36,28 @@ export type Notification = {
 }
 export type KnowledgeArticle = { id: string; title: string; body: string; status: string }
 export type ListResponse<T> = { items: T[]; total: number; limit: number; offset: number }
+export type PortalAccount = {
+  link_id: string
+  workspace_id: string
+  workspace_name: string
+  client_id: string
+  client_name: string
+}
+export type PortalTicket = {
+  id: string
+  workspace_id: string
+  client_id: string
+  subject: string
+  description: string
+  status: string
+  priority: string
+  created_at: string
+  updated_at: string
+}
+export type PortalMessage = {
+  id: string
+  conversation_id: string
+  direction: 'inbound' | 'outbound'
+  body: string
+  created_at: string
+}
