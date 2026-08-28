@@ -24,7 +24,10 @@ jobs:
           CSP_TLS_HOSTNAME: srv-ai
           CSP_PUBLIC_ORIGIN: https://srv-ai
           CSP_PUBLIC_CA_FILE: ./runtime/tls/ca.crt
-          CSP_NAS_BACKUP_DIR: /mnt/ai-lab-nas/support-endpoint
+          CSP_NAS_HOST: 192.168.5.160
+          CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
           CSP_NAS_RETENTION_DAYS: '30'
           RELEASE_VERSION: 0.9.0
         run: |
@@ -59,10 +62,11 @@ jobs:
           docker compose -f compose.edge.yml up -d --remove-orphans
 
           CSP_EXPECT_BUILD_REVISION="$(git rev-parse HEAD)" bash tools/production-edge-check.sh
+          bash tools/ensure-nas-mount.sh
           bash tools/backup-to-nas.sh
 
           echo '=== FINAL EDGE ==='
           curl --cacert ./runtime/tls/ca.crt -fsS https://srv-ai/health
           echo
           echo '=== NAS LATEST ==='
-          find /mnt/ai-lab-nas/support-endpoint -maxdepth 1 -type f -name 'csp-*.dump' -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' | sort | tail -3
+          find /mnt/support-endpoint-nas/support-endpoint -maxdepth 1 -type f -name 'csp-*.dump' -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' | sort | tail -3
