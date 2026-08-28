@@ -1,0 +1,50 @@
+name: Diagnose NAS SMB
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    if: ${{ github.head_ref == 'agent/diag-nas-smb' }}
+    name: Diagnose TerraMaster SMB access
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 10
+    steps:
+      - name: Verify production HTTPS
+        shell: bash
+        working-directory: /opt/support-endpoint
+        run: |
+          set -euo pipefail
+          git fetch --prune origin main
+          git checkout main
+          git reset --hard origin/main
+          tls_dir="$HOME/support-endpoint-runtime/tls"
+          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d edge
+          curl --cacert "$tls_dir/ca.crt" -fsS --max-time 10 https://srv-ai/health
+          echo
+
+      - name: Inspect SMB guest access
+        shell: bash
+        run: |
+          set -euo pipefail
+          nas=192.168.5.160
+          if timeout 3 bash -c "</dev/tcp/$nas/445" 2>/dev/null; then
+            echo 'SMB_PORT=OPEN'
+          else
+            echo 'SMB_PORT=CLOSED'
+            exit 0
+          fi
+          docker run --rm --network=host alpine:3.20 sh -ceu '
+            apk add --no-cache samba-client >/dev/null
+            echo "=== SHARE LIST ==="
+            smbclient -L //192.168.5.160 -N -m SMB3 || true
+            echo "=== CANDIDATE SHARES ==="
+            for share in AI-Lab-Backup AI_Lab_Backup Backup backup Public public; do
+              echo "--- $share"
+              smbclient "//192.168.5.160/$share" -N -m SMB3 -c "ls" 2>&1 | head -40 || true
+            done
+          '
