@@ -11,6 +11,10 @@ fail() {
   exit 1
 }
 
+compose() {
+  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
 [[ -f "$ENV_FILE" ]] || fail "$ENV_FILE is missing"
 [[ -f "$COMPOSE_FILE" ]] || fail "$COMPOSE_FILE is missing"
 [[ -r tools/backup.sh ]] || fail "tools/backup.sh is missing or unreadable"
@@ -34,12 +38,12 @@ printf 'deploy-production: preflight version=%s revision=%s branch=%s\n' \
   "$EXPECTED_VERSION" "$head_sha" "${branch:-detached}"
 
 bash tools/release-check.sh
-docker compose -f "$COMPOSE_FILE" config --quiet
+compose config --quiet
 
 backup_file="initial-install"
-if docker compose -f "$COMPOSE_FILE" ps -a --services | grep -qx postgres; then
+if compose ps -a --services | grep -qx postgres; then
   printf 'deploy-production: existing PostgreSQL container detected; backup is mandatory\n'
-  docker compose -f "$COMPOSE_FILE" up -d --wait postgres
+  compose up -d --wait postgres
   backup_output="$(bash tools/backup.sh)"
   printf '%s\n' "$backup_output"
   backup_file="$(printf '%s\n' "$backup_output" | grep -Eo '([^[:space:]]+\.dump)' | tail -1 || true)"
@@ -58,7 +62,7 @@ else
 fi
 
 printf 'deploy-production: deploying revision=%s\n' "$head_sha"
-docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans
+compose up -d --build --remove-orphans
 
 bash tools/smoke-production.sh
 
