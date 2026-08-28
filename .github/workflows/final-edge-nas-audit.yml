@@ -13,7 +13,7 @@ jobs:
     if: ${{ github.head_ref == 'agent/final-edge-nas' }}
     name: Audit srv-ai HTTPS and NAS
     runs-on: [self-hosted, linux, x64, support-production]
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Read-only host audit
         shell: bash
@@ -33,24 +33,22 @@ jobs:
           command -v nginx || true
           command -v caddy || true
           echo '=== HOST SERVICES ==='
-          systemctl list-unit-files --type=service 2>/dev/null | grep -Ei 'nginx|caddy|apache|cloudflared' || true
+          timeout 3s systemctl list-unit-files --type=service 2>/dev/null | grep -Ei 'nginx|caddy|apache|cloudflared' || true
           echo '=== MOUNTS ==='
-          findmnt -t nfs,nfs4,cifs,smb3 2>/dev/null || true
+          timeout 3s findmnt -t nfs,nfs4,cifs,smb3 2>/dev/null || true
           echo '=== FSTAB REMOTE ENTRIES ==='
           grep -Ev '^[[:space:]]*(#|$)' /etc/fstab 2>/dev/null | grep -Ei 'nfs|cifs|smb|://' || true
           echo '=== COMMON NAS PATHS ==='
           for p in /mnt /media /srv /backup /backups; do
-            [ -d "$p" ] && find "$p" -maxdepth 2 -mindepth 1 -type d -printf '%p\n' 2>/dev/null | head -80 || true
+            if [ -d "$p" ]; then
+              timeout 3s find "$p" -maxdepth 2 -mindepth 1 -type d -printf '%p\n' 2>/dev/null | head -80 || true
+            fi
           done
           echo '=== HOSTS / NAS NAMES ==='
           grep -Ei 'nas|synology|qnap' /etc/hosts 2>/dev/null || true
-          getent hosts nas NAS synology qnap 2>/dev/null || true
-          echo '=== SSH KNOWN HOST LABELS (no keys) ==='
-          if [ -r "$HOME/.ssh/known_hosts" ]; then
-            cut -d' ' -f1 "$HOME/.ssh/known_hosts" | grep -Ev '^\|' | head -50 || true
-          fi
+          timeout 3s getent hosts nas NAS synology qnap 2>/dev/null || true
           echo '=== SUPPORT ENV NON-SECRETS ==='
           sed -n -E '/^(CSP_WEB_BIND|CORS_ALLOW_ORIGINS)=/p' .env.production || true
           echo '=== LOCAL CSP HEALTH ==='
-          curl -fsS http://127.0.0.1:8180/health || true
+          curl -fsS --max-time 5 http://127.0.0.1:8180/health || true
           echo
