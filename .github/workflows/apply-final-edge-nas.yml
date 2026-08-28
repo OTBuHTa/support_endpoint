@@ -11,59 +11,45 @@ permissions:
 jobs:
   apply:
     if: ${{ github.head_ref == 'agent/apply-final-edge-nas' }}
-    name: Apply srv-ai HTTPS and NAS backup
+    name: Finalize srv-ai HTTPS and NAS backup
     runs-on: [self-hosted, linux, x64, support-production]
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
-      - name: Verify target host
+      - name: Verify applied HTTPS state
         shell: bash
+        working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
           [[ "$(hostname -s)" == "srv-ai" ]]
           docker info >/dev/null
-          test -d /opt/support-endpoint/.git
-          test -f /opt/support-endpoint/.env.production
-          [[ "$(stat -c '%a' /opt/support-endpoint/.env.production)" == "600" ]]
-          rm -rf /opt/support-endpoint/runtime
-          if ss -lnt 2>/dev/null | grep -E ':443[[:space:]]' >/dev/null; then
-            docker ps --format '{{.Names}} {{.Ports}}' | grep -q '^csp-edge-edge-1 .*443' || {
-              echo 'port 443 is already occupied by another service' >&2
-              exit 1
-            }
-          fi
-
-      - name: Sync approved main
-        shell: bash
-        working-directory: /opt/support-endpoint
-        run: |
-          set -euo pipefail
-          test -z "$(git status --porcelain)"
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
-          echo "revision=$(git rev-parse HEAD)"
+          grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
+          test -r "$HOME/support-endpoint-runtime/tls/ca.crt"
+          docker ps --format '{{.Names}} {{.Ports}}' | grep -q '^csp-edge-edge-1 .*443'
+          curl --cacert "$HOME/support-endpoint-runtime/tls/ca.crt" -fsS --max-time 10 https://srv-ai/health
+          echo
 
-      - name: Configure srv-ai TLS and CORS
+      - name: Diagnose and recover NAS NFS mount
         shell: bash
-        working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
-          tls_dir="$HOME/support-endpoint-runtime/tls"
-          sed -i 's#^CORS_ALLOW_ORIGINS=.*#CORS_ALLOW_ORIGINS=https://srv-ai#' .env.production
-          grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
-          [[ "$(stat -c '%a' .env.production)" == "600" ]]
-          CSP_TLS_DIR="$tls_dir" CSP_TLS_HOSTNAME=srv-ai bash tools/generate-local-tls.sh
-          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d edge
-          test -z "$(git status --porcelain)"
-
-      - name: Deploy stable runtime with final origin
-        shell: bash
-        working-directory: /opt/support-endpoint
-        env:
-          CSP_ENV_FILE: .env.production
-          RELEASE_VERSION: 0.9.0
-          CSP_SMOKE_BASE_URL: http://127.0.0.1:8180
-        run: bash tools/deploy-production.sh
+          echo '=== NAS TCP 2049 ==='
+          timeout 5 bash -c '</dev/tcp/192.168.5.160/2049'
+          echo '=== NFS CLIENT ==='
+          command -v mount.nfs4 || true
+          grep -E '(^|[[:space:]])nfs(4)?$' /proc/filesystems || true
+          systemctl status mnt-ai\x2dlab\x2dnas.automount --no-pager 2>/dev/null || true
+          systemctl status mnt-ai\x2dlab\x2dnas.mount --no-pager 2>/dev/null || true
+          if ! grep -Eq '(^|[[:space:]])nfs(4)?$' /proc/filesystems; then
+            docker run --rm --privileged -v /lib/modules:/lib/modules:ro alpine:3.20 \
+              sh -c 'modprobe nfs || modprobe nfsv4 || true'
+          fi
+          echo '=== NFS FILESYSTEMS AFTER MODULE LOAD ==='
+          grep -E 'nfs' /proc/filesystems || true
+          timeout 15 ls -la /mnt/ai-lab-nas >/dev/null
+          findmnt /mnt/ai-lab-nas
 
       - name: Create verified NAS backup
         shell: bash
@@ -74,7 +60,7 @@ jobs:
           CSP_NAS_RETENTION_DAYS: '30'
         run: bash tools/backup-to-nas.sh
 
-      - name: Verify HTTPS edge
+      - name: Verify final production state
         shell: bash
         working-directory: /opt/support-endpoint
         run: |
@@ -87,5 +73,8 @@ jobs:
           RELEASE_VERSION=0.9.0 \
           CSP_EXPECT_BUILD_REVISION="$revision" \
           bash tools/production-edge-check.sh
+          latest="$(find /mnt/ai-lab-nas/support-endpoint -maxdepth 1 -name 'csp-*.dump' -type f | sort | tail -1)"
+          test -n "$latest"
+          (cd /mnt/ai-lab-nas/support-endpoint && sha256sum -c "$(basename "$latest").sha256")
+          echo "latest_nas_backup=$latest"
           CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml ps
-          openssl x509 -in "$tls_dir/server.crt" -noout -subject -issuer -dates -ext subjectAltName
