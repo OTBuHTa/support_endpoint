@@ -11,7 +11,7 @@ permissions:
 jobs:
   apply:
     if: ${{ github.head_ref == 'agent/apply-final-edge-nas' }}
-    name: Inspect NAS admin channel
+    name: Inspect NAS SMB access
     runs-on: [self-hosted, linux, x64, support-production]
     timeout-minutes: 10
     steps:
@@ -28,33 +28,25 @@ jobs:
           curl --cacert "$tls_dir/ca.crt" -fsS --max-time 10 https://srv-ai/health
           echo
 
-      - name: Inspect NAS management reachability
+      - name: Inspect SMB guest access
         shell: bash
         run: |
           set -euo pipefail
           nas=192.168.5.160
-          echo '=== NAS EXPORT ACL ==='
-          docker run --rm --network=host alpine:3.20 sh -ceu '
-            apk add --no-cache nfs-utils >/dev/null
-            showmount -e 192.168.5.160 || true
-          '
-          echo '=== MANAGEMENT PORTS ==='
-          for port in 22 80 443 5000 5001 8080 8443; do
-            if timeout 2 bash -c "</dev/tcp/$nas/$port" 2>/dev/null; then
-              echo "OPEN $port"
-            else
-              echo "CLOSED $port"
-            fi
-          done
-          echo '=== HTTP HEADERS ==='
-          for url in http://$nas https://$nas http://$nas:5000 https://$nas:5001 http://$nas:8080 https://$nas:8443; do
-            echo "--- $url"
-            curl -kIsS --max-time 3 "$url" 2>/dev/null | sed -n '1,12p' || true
-          done
-          echo '=== SSH HOST KEY ==='
-          if command -v ssh-keyscan >/dev/null; then
-            timeout 5 ssh-keyscan -T 3 "$nas" 2>/dev/null | head -5 || true
+          echo '=== SMB PORT ==='
+          if timeout 3 bash -c "</dev/tcp/$nas/445" 2>/dev/null; then
+            echo 'OPEN 445'
+          else
+            echo 'CLOSED 445'
+            exit 0
           fi
-          echo '=== EXISTING NONINTERACTIVE SSH TEST ==='
-          timeout 6 ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
-            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 "$nas" 'printf NAS_SSH_OK' 2>&1 || true
+          echo '=== ANONYMOUS SHARE LIST ==='
+          docker run --rm --network=host alpine:3.20 sh -ceu '
+            apk add --no-cache samba-client >/dev/null
+            smbclient -L //192.168.5.160 -N -m SMB3 || true
+            echo "=== CANDIDATE SHARE LISTING ==="
+            for share in AI-Lab-Backup AI_Lab_Backup Backup backup public Public; do
+              echo "--- $share"
+              smbclient "//192.168.5.160/$share" -N -m SMB3 -c "ls" 2>&1 | head -30 || true
+            done
+          '
