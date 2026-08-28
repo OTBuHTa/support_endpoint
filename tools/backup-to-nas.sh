@@ -4,7 +4,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-nas_root="${CSP_NAS_BACKUP_DIR:-/mnt/ai-lab-nas/support-endpoint}"
+mount_point="${CSP_NAS_MOUNT_POINT:-/mnt/support-endpoint-nas}"
+nas_root="${CSP_NAS_BACKUP_DIR:-$mount_point/support-endpoint}"
 retention_days="${CSP_NAS_RETENTION_DAYS:-30}"
 
 fail() {
@@ -12,7 +13,8 @@ fail() {
   exit 1
 }
 
-[[ -d /mnt/ai-lab-nas ]] || fail '/mnt/ai-lab-nas is not available'
+findmnt -rn -T "$mount_point" -t nfs,nfs4 >/dev/null 2>&1 \
+  || fail "$mount_point is not an NFS mount; run tools/ensure-nas-mount.sh first"
 mkdir -p "$nas_root" || fail "cannot create $nas_root"
 [[ -w "$nas_root" ]] || fail "$nas_root is not writable"
 
