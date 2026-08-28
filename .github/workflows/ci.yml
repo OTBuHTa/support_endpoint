@@ -126,7 +126,7 @@ jobs:
           tools/backup-and-offhost.sh
       - name: Release consistency
         env:
-          RELEASE_VERSION: 0.9.0-rc1
+          RELEASE_VERSION: 0.9.0
         run: bash tools/release-check.sh
 
   backup-restore:
@@ -157,7 +157,7 @@ jobs:
         run: docker compose -f compose.production.yml down -v
 
   release-smoke:
-    name: RC1 hardened production smoke
+    name: Stable hardened production smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -166,7 +166,7 @@ jobs:
       CSP_WEB_BIND: 127.0.0.1:18180
       CSP_SMOKE_BASE_URL: http://127.0.0.1:18180
       CSP_EXPECT_BUILD_REVISION: ${{ github.sha }}
-      RELEASE_VERSION: 0.9.0-rc1
+      RELEASE_VERSION: 0.9.0
     steps:
       - name: Checkout
         uses: actions/checkout@v5
