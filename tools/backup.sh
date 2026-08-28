@@ -12,7 +12,11 @@ checksum_file="${backup_file}.sha256"
 
 export CSP_ENV_FILE="$env_file"
 
-docker compose -f "$compose_file" exec -T postgres \
+compose() {
+  docker compose --env-file "$env_file" -f "$compose_file" "$@"
+}
+
+compose exec -T postgres \
   sh -ceu 'pg_dump --username="$POSTGRES_USER" --format=custom --no-owner --no-acl --dbname="$POSTGRES_DB"' \
   > "$backup_file"
 
