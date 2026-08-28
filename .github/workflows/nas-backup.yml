@@ -1,0 +1,48 @@
+name: Production NAS Backup
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: support-endpoint-nas-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Backup PostgreSQL to NAS
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 30
+    steps:
+      - name: Sync approved main
+        shell: bash
+        working-directory: /opt/support-endpoint
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          git fetch --prune origin main
+          git checkout main
+          git reset --hard origin/main
+
+      - name: Ensure dedicated NAS mount
+        shell: bash
+        working-directory: /opt/support-endpoint
+        env:
+          CSP_NAS_HOST: 192.168.5.160
+          CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+        run: bash tools/ensure-nas-mount.sh
+
+      - name: Backup, restore-verify and replicate
+        shell: bash
+        working-directory: /opt/support-endpoint
+        env:
+          CSP_ENV_FILE: .env.production
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
+          CSP_NAS_RETENTION_DAYS: '30'
+        run: bash tools/backup-to-nas.sh
