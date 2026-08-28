@@ -41,4 +41,13 @@ expect_literal apps/web/nginx.conf "location = /docs"
 expect_literal apps/web/nginx.conf "location = /openapi.json"
 expect_literal apps/web/nginx.conf "location = /redoc"
 
+expect_literal tools/production-edge-check.sh "support.example.com placeholder"
+expect_literal tools/production-edge-check.sh "CSP_WEB_BIND must remain loopback-only"
+expect_literal tools/backup-offhost.sh "CSP_BACKUP_SSH_REMOTE is required"
+expect_literal tools/backup-and-offhost.sh "restore-verify.sh"
+expect_literal deploy/systemd/cloudflared-support-endpoint.service "/etc/support-endpoint/cloudflared.yml"
+expect_literal deploy/systemd/support-endpoint-backup.service "/etc/support-endpoint/backup-offhost.env"
+expect_literal deploy/systemd/support-endpoint-backup.timer "OnCalendar="
+expect_literal deploy/cloudflared-support-endpoint.yml.example "http://127.0.0.1:8180"
+
 printf 'release-check: %s metadata and production invariants OK\n' "$expected"
