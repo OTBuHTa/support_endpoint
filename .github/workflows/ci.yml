@@ -113,6 +113,8 @@ jobs:
           POSTGRES_PASSWORD: replace-with-a-long-random-password
           CSP_ENV_FILE: .env.production.example
         run: docker compose -f compose.production.yml config --quiet
+      - name: Validate edge compose
+        run: docker compose -f compose.edge.yml config --quiet
       - name: Validate operations and release scripts
         run: >-
           bash -n
@@ -124,6 +126,8 @@ jobs:
           tools/production-edge-check.sh
           tools/backup-offhost.sh
           tools/backup-and-offhost.sh
+          tools/generate-local-tls.sh
+          tools/backup-to-nas.sh
       - name: Release consistency
         env:
           RELEASE_VERSION: 0.9.0

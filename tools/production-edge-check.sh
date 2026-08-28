@@ -6,8 +6,9 @@ cd "$repo_root"
 
 env_file="${CSP_ENV_FILE:-.env.production}"
 base_url="${CSP_SMOKE_BASE_URL:-http://127.0.0.1:8180}"
-expected_version="${RELEASE_VERSION:-0.9.0-rc1}"
+expected_version="${RELEASE_VERSION:-0.9.0}"
 expected_revision="${CSP_EXPECT_BUILD_REVISION:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}"
+public_ca="${CSP_PUBLIC_CA_FILE:-}"
 
 fail() {
   printf 'production-edge-check: %s\n' "$*" >&2
@@ -53,11 +54,17 @@ PY
 public_origin="${CSP_PUBLIC_ORIGIN:-$origin}"
 [[ "$public_origin" == https://* ]] || fail 'CSP_PUBLIC_ORIGIN must use HTTPS'
 
-curl -fsS --max-time 15 "$public_origin/health" >/dev/null || fail "public health failed at $public_origin"
-curl -fsS --max-time 15 "$public_origin/ready" >/dev/null || fail "public readiness failed at $public_origin"
+curl_args=(-fsS --max-time 15)
+if [[ -n "$public_ca" ]]; then
+  [[ -r "$public_ca" ]] || fail "CSP_PUBLIC_CA_FILE is unreadable: $public_ca"
+  curl_args+=(--cacert "$public_ca")
+fi
+
+curl "${curl_args[@]}" "$public_origin/health" >/dev/null || fail "public health failed at $public_origin"
+curl "${curl_args[@]}" "$public_origin/ready" >/dev/null || fail "public readiness failed at $public_origin"
 
 for path in /docs /openapi.json /redoc; do
-  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$public_origin$path" || true)"
+  code="$(curl "${curl_args[@]}" -o /dev/null -w '%{http_code}' "$public_origin$path" || true)"
   [[ "$code" == 404 ]] || fail "$public_origin$path returned HTTP $code, expected 404"
 done
 
