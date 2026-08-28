@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Support Endpoint production backup
+
+[Timer]
+OnCalendar=*-*-* 03:45:00 UTC
+Persistent=true
+RandomizedDelaySec=900
+Unit=support-endpoint-backup.service
+
+[Install]
+WantedBy=timers.target

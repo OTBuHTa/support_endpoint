@@ -1,0 +1,20 @@
+[Unit]
+Description=Support Endpoint production backup and off-host verification
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=support-runner
+Group=support-runner
+WorkingDirectory=/opt/support-endpoint
+Environment=CSP_ENV_FILE=.env.production
+EnvironmentFile=/etc/support-endpoint/backup-offhost.env
+ExecStart=/usr/bin/bash tools/backup-and-offhost.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/support-endpoint/backups
+ReadOnlyPaths=/etc/support-endpoint /opt/support-endpoint
