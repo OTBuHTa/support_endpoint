@@ -1,0 +1,11 @@
+# Install as /etc/support-endpoint/cloudflared.yml with mode 600.
+# Replace the placeholders with a dedicated Cloudflare Tunnel created only for support_endpoint.
+# Never reuse another project's tunnel credentials or hostname.
+
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/support-endpoint/cloudflared-credentials.json
+
+ingress:
+  - hostname: REPLACE_WITH_SUPPORT_HOSTNAME
+    service: http://127.0.0.1:8180
+  - service: http_status:404
