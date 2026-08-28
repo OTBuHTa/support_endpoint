@@ -44,10 +44,13 @@ jobs:
             fi
           done
 
-          echo '=== CLOUDFLARED COMMAND/CONFIG REFERENCES ==='
+          echo '=== CLOUDFLARED STATE ==='
           if command -v cloudflared >/dev/null 2>&1; then
             cloudflared --version || true
-            systemctl show cloudflared -p ExecStart --value 2>/dev/null || true
+            systemctl show cloudflared -p ActiveState -p SubState -p NRestarts -p ExecStart --no-pager 2>/dev/null || true
+            journalctl -u cloudflared -n 30 --no-pager 2>/dev/null \
+              | sed -E 's/(token|credential|secret|password|Authorization)[=:][^[:space:]]+/\1=<redacted>/Ig' \
+              | grep -Ev '(^|[?&])(token|credential|secret|password)=' || true
             for f in /etc/cloudflared/config.yml /etc/cloudflared/config.yaml "$HOME/.cloudflared/config.yml" "$HOME/.cloudflared/config.yaml"; do
               if [[ -r "$f" ]]; then
                 echo "config=$f"
@@ -73,3 +76,18 @@ jobs:
           if [[ -r "$repo/.env.production" ]]; then
             grep -E '^(CORS_ALLOW_ORIGINS|CSP_WEB_BIND)=' "$repo/.env.production" || true
           fi
+
+          echo '=== BACKUP / OFF-HOST CAPABILITY ==='
+          find "$repo/backups" -maxdepth 1 -type f -printf '%f %s bytes\n' 2>/dev/null | sort | tail -20 || true
+          for cmd in restic borg rclone duplicity aws mc; do
+            if command -v "$cmd" >/dev/null 2>&1; then
+              printf '%s=' "$cmd"
+              command -v "$cmd"
+            fi
+          done
+          systemctl list-unit-files --no-legend 2>/dev/null \
+            | grep -Ei '(backup|restic|borg|rclone|duplicity)' \
+            | head -50 || true
+          systemctl list-timers --all --no-pager 2>/dev/null \
+            | grep -Ei '(backup|restic|borg|rclone|duplicity)' \
+            | head -50 || true
