@@ -51,9 +51,17 @@ jobs:
           bash tools/generate-local-tls.sh
           docker compose -f compose.edge.yml up -d --force-recreate --remove-orphans
 
-          curl --resolve support.netsys-ai.ru:443:127.0.0.1 \
-            --cacert ./runtime/tls/ca.crt -fsS https://support.netsys-ai.ru/health
-          echo
+          ready=0
+          for i in $(seq 1 20); do
+            if curl --resolve support.netsys-ai.ru:443:127.0.0.1 \
+              --cacert ./runtime/tls/ca.crt -fsS https://support.netsys-ai.ru/health; then
+              ready=1
+              echo
+              break
+            fi
+            sleep 1
+          done
+          [[ "$ready" == 1 ]] || { docker compose -f compose.edge.yml logs --no-color --tail=100 edge; exit 1; }
           openssl x509 -in ./runtime/tls/server.crt -noout -subject -ext subjectAltName
 
           if [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]]; then
