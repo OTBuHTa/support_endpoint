@@ -15,7 +15,7 @@ jobs:
     runs-on: [self-hosted, linux, x64, support-production]
     timeout-minutes: 30
     steps:
-      - name: Verify applied HTTPS state
+      - name: Reconcile HTTPS edge state
         shell: bash
         working-directory: /opt/support-endpoint
         run: |
@@ -25,11 +25,29 @@ jobs:
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
+          tls_dir="$HOME/support-endpoint-runtime/tls"
+          echo '=== CORS ==='
+          grep '^CORS_ALLOW_ORIGINS=' .env.production || true
+          echo '=== TLS ==='
+          ls -l "$tls_dir" || true
+          echo '=== EDGE BEFORE ==='
+          docker ps -a --filter name=csp-edge-edge-1 --format '{{.Names}}|{{.Status}}|{{.Ports}}' || true
           grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
-          test -r "$HOME/support-endpoint-runtime/tls/ca.crt"
-          docker ps --format '{{.Names}} {{.Ports}}' | grep -q '^csp-edge-edge-1 .*443'
-          curl --cacert "$HOME/support-endpoint-runtime/tls/ca.crt" -fsS --max-time 10 https://srv-ai/health
-          echo
+          test -r "$tls_dir/ca.crt"
+          test -r "$tls_dir/server.crt"
+          test -r "$tls_dir/server.key"
+          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d --force-recreate edge
+          echo '=== EDGE AFTER ==='
+          docker ps --filter name=csp-edge-edge-1 --format '{{.Names}}|{{.Status}}|{{.Ports}}'
+          for i in $(seq 1 10); do
+            if curl --cacert "$tls_dir/ca.crt" -fsS --max-time 5 https://srv-ai/health; then
+              echo
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs --tail=100 csp-edge-edge-1 || true
+          exit 1
 
       - name: Diagnose and recover NAS NFS mount
         shell: bash
@@ -39,7 +57,7 @@ jobs:
           timeout 5 bash -c '</dev/tcp/192.168.5.160/2049'
           echo '=== NFS CLIENT ==='
           command -v mount.nfs4 || true
-          grep -E '(^|[[:space:]])nfs(4)?$' /proc/filesystems || true
+          grep -E 'nfs' /proc/filesystems || true
           systemctl status mnt-ai\x2dlab\x2dnas.automount --no-pager 2>/dev/null || true
           systemctl status mnt-ai\x2dlab\x2dnas.mount --no-pager 2>/dev/null || true
           if ! grep -Eq '(^|[[:space:]])nfs(4)?$' /proc/filesystems; then
