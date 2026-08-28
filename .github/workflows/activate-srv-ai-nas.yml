@@ -33,7 +33,8 @@ jobs:
           test -d .git
           test -f .env.production
           [[ "$(stat -c '%a' .env.production)" == "600" ]]
-          test -z "$(git status --porcelain)"
+          git diff --quiet
+          git diff --cached --quiet
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
