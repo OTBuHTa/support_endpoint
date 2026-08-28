@@ -24,6 +24,7 @@ jobs:
           test -d /opt/support-endpoint/.git
           test -f /opt/support-endpoint/.env.production
           [[ "$(stat -c '%a' /opt/support-endpoint/.env.production)" == "600" ]]
+          rm -rf /opt/support-endpoint/runtime
           if ss -lnt 2>/dev/null | grep -E ':443[[:space:]]' >/dev/null; then
             docker ps --format '{{.Names}} {{.Ports}}' | grep -q '^csp-edge-edge-1 .*443' || {
               echo 'port 443 is already occupied by another service' >&2
@@ -47,11 +48,13 @@ jobs:
         working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
+          tls_dir="$HOME/support-endpoint-runtime/tls"
           sed -i 's#^CORS_ALLOW_ORIGINS=.*#CORS_ALLOW_ORIGINS=https://srv-ai#' .env.production
           grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
           [[ "$(stat -c '%a' .env.production)" == "600" ]]
-          CSP_TLS_HOSTNAME=srv-ai bash tools/generate-local-tls.sh
-          docker compose -f compose.edge.yml up -d edge
+          CSP_TLS_DIR="$tls_dir" CSP_TLS_HOSTNAME=srv-ai bash tools/generate-local-tls.sh
+          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d edge
+          test -z "$(git status --porcelain)"
 
       - name: Deploy stable runtime with final origin
         shell: bash
@@ -76,12 +79,13 @@ jobs:
         working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
+          tls_dir="$HOME/support-endpoint-runtime/tls"
           revision="$(git rev-parse HEAD)"
           CSP_ENV_FILE=.env.production \
           CSP_PUBLIC_ORIGIN=https://srv-ai \
-          CSP_PUBLIC_CA_FILE=runtime/tls/ca.crt \
+          CSP_PUBLIC_CA_FILE="$tls_dir/ca.crt" \
           RELEASE_VERSION=0.9.0 \
           CSP_EXPECT_BUILD_REVISION="$revision" \
           bash tools/production-edge-check.sh
-          docker compose -f compose.edge.yml ps
-          openssl x509 -in runtime/tls/server.crt -noout -subject -issuer -dates -ext subjectAltName
+          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml ps
+          openssl x509 -in "$tls_dir/server.crt" -noout -subject -issuer -dates -ext subjectAltName
