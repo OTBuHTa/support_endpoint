@@ -25,8 +25,6 @@ jobs:
           CSP_ENV_FILE: .env.production
           CSP_NAS_HOST: 192.168.5.160
           CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
-          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
-          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
           CSP_NAS_RETENTION_DAYS: '30'
         run: |
           set -euo pipefail
@@ -37,5 +35,15 @@ jobs:
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
-          bash tools/ensure-nas-mount.sh
+
+          export CSP_NAS_MOUNT_POINT=/mnt/support-endpoint-nas
+          export CSP_NAS_BACKUP_DIR=/mnt/support-endpoint-nas/support-endpoint
+          if ! bash tools/ensure-nas-mount.sh; then
+            echo 'dedicated NFS mount unavailable; checking existing verified host automount'
+            timeout 10 ls /mnt/ai-lab-nas >/dev/null
+            findmnt -rn -T /mnt/ai-lab-nas -t nfs,nfs4 >/dev/null
+            export CSP_NAS_MOUNT_POINT=/mnt/ai-lab-nas
+            export CSP_NAS_BACKUP_DIR=/mnt/ai-lab-nas/support-endpoint
+          fi
+
           bash tools/backup-to-nas.sh
