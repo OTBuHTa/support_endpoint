@@ -26,8 +26,6 @@ jobs:
           CSP_PUBLIC_CA_FILE: ./runtime/tls/ca.crt
           CSP_NAS_HOST: 192.168.5.160
           CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
-          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
-          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
           CSP_NAS_RETENTION_DAYS: '30'
           RELEASE_VERSION: 0.9.0
         run: |
@@ -60,13 +58,24 @@ jobs:
 
           bash tools/generate-local-tls.sh
           docker compose -f compose.edge.yml up -d --remove-orphans
-
           CSP_EXPECT_BUILD_REVISION="$(git rev-parse HEAD)" bash tools/production-edge-check.sh
-          bash tools/ensure-nas-mount.sh
+
+          export CSP_NAS_MOUNT_POINT=/mnt/support-endpoint-nas
+          export CSP_NAS_BACKUP_DIR=/mnt/support-endpoint-nas/support-endpoint
+          if ! bash tools/ensure-nas-mount.sh; then
+            echo 'dedicated NFS mount unavailable; checking existing verified host automount'
+            timeout 10 ls /mnt/ai-lab-nas >/dev/null
+            findmnt -rn -T /mnt/ai-lab-nas -t nfs,nfs4 >/dev/null
+            export CSP_NAS_MOUNT_POINT=/mnt/ai-lab-nas
+            export CSP_NAS_BACKUP_DIR=/mnt/ai-lab-nas/support-endpoint
+          fi
+
           bash tools/backup-to-nas.sh
 
           echo '=== FINAL EDGE ==='
           curl --cacert ./runtime/tls/ca.crt -fsS https://srv-ai/health
           echo
+          echo '=== NAS TARGET ==='
+          echo "$CSP_NAS_BACKUP_DIR"
           echo '=== NAS LATEST ==='
-          find /mnt/support-endpoint-nas/support-endpoint -maxdepth 1 -type f -name 'csp-*.dump' -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' | sort | tail -3
+          find "$CSP_NAS_BACKUP_DIR" -maxdepth 1 -type f -name 'csp-*.dump' -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' | sort | tail -3
