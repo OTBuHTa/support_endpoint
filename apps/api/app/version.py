@@ -2,5 +2,5 @@
 
 import os
 
-API_VERSION = "0.9.0-rc1"
+API_VERSION = "0.9.0"
 BUILD_REVISION = os.getenv("APP_BUILD_REVISION", "unknown")

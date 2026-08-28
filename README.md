@@ -6,7 +6,7 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 
 ## Current milestone
 
-`v0.9.0-rc1` — **Release Candidate 1: production-readiness validation**. New product features are frozen for this candidate; changes are limited to release consistency, deployment/smoke gates, security findings and release documentation.
+`v0.9.0` — **stable production release candidate promoted after RC1 validation**. Product feature scope is frozen for this release line; changes are limited to production operations, security fixes and maintenance.
 
 ## Architecture principles
 
@@ -35,6 +35,7 @@ Operationally independent from **AI-project-SRV**, which runs on the same host (
 - **Browser Sessions & Scheduler (Phase 8C):** HttpOnly/SameSite refresh-cookie browser flow, refresh rotation/revocation and autonomous SLA scheduler with PostgreSQL advisory locking.
 - **Final Security Hardening (Phase 8D):** Redis-backed distributed AI circuit breaker with local fail-safe fallback, configurable attachment limits, per-workspace storage quota, serialized quota enforcement and filename normalization.
 - **Release Candidate 1 (v0.9.0-rc1):** synchronized release metadata, machine-checkable release invariants and production-stack smoke validation.
+- **Stable Release (v0.9.0):** RC1 promotion after successful target-host deployments, repeated checksummed backup/isolated-restore rehearsals, hardened smoke validation, and addition of isolated production-edge and off-host backup tooling.
 
 AI remains disabled by default with `LLM_ENABLED=false`. When disabled, rate-limited, circuit-open or otherwise unavailable, the non-AI product remains operational.
 
@@ -73,16 +74,16 @@ npm run typecheck
 npm run build
 
 cd ../..
-RELEASE_VERSION=0.9.0-rc1 bash tools/release-check.sh
+RELEASE_VERSION=0.9.0 bash tools/release-check.sh
 POSTGRES_PASSWORD=replace-with-a-long-random-password \
 CSP_ENV_FILE=.env.production.example \
 docker compose -f compose.production.yml config --quiet
 ```
 
-GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck/build, the production compose manifest, shell syntax, a real PostgreSQL backup/restore rehearsal, RC release consistency and a hardened production-stack smoke test.
+GitHub Actions validates Python 3.12 lint/tests, whitespace, complete Alembic upgrade/downgrade, React TypeScript typecheck/build, the production compose manifest, shell syntax, a real PostgreSQL backup/restore rehearsal, stable release consistency and a hardened production-stack smoke test.
 
 ## Release policy
 
-`v0.9.0-rc1` is a release candidate, not the final production tag. No new feature work is accepted into the RC branch. A production release requires the complete CI matrix to remain green, a successful production-like deployment using `compose.production.yml`, backup/restore verification, smoke checks, and review of any environment-specific deployment findings.
+`v0.9.0` is the stable release line. Promotion requires the complete CI matrix to remain green, a successful target-host deployment using `compose.production.yml`, backup/restore verification and production smoke checks. Public exposure remains fail-closed until the target environment has a real HTTPS origin and an independent off-host backup destination.
 
-See `docs/architecture.md` and `docs/production.md` for architecture and deployment details.
+See `docs/architecture.md`, `docs/production.md`, and `docs/production-edge-backup.md` for architecture and deployment details.

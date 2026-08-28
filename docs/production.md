@@ -1,132 +1,134 @@
-# Production deployment — v0.9.0-rc1
+# Production deployment — v0.9.0
 
 This runbook describes the hardened single-host deployment path for Support Endpoint. It is intentionally separate from the development compose file.
 
 ## Security invariants
 
 - Use `compose.production.yml`, not the development compose file, for external service.
-- Keep the web listener on loopback by default (`127.0.0.1:8180`) and expose it through the host reverse proxy or tunnel.
+- Keep the web listener on loopback by default (`127.0.0.1:8180`) and expose it through a dedicated host reverse proxy or tunnel.
 - The API is not published on a host port in production; nginx reaches it over the private Docker backend network.
 - The backend Docker network is `internal: true` and remains separate from AI-project-SRV networks and volumes.
 - API, scheduler and web containers use read-only root filesystems where applicable, `no-new-privileges`, and reduced Linux capabilities.
 - FastAPI docs/OpenAPI are disabled when `APP_ENV=production`.
 - Production startup fails if the JWT secret is unsafe, bootstrap is enabled, auth rate limiting is disabled, HSTS mode is disabled, CORS origins are empty, the metrics bearer token is too short, or the SLA scheduler interval is unsafe.
-- Browser refresh sessions use an HttpOnly, SameSite=Strict cookie with server-side rotation/revocation; refresh tokens are not persisted in JavaScript storage.
+- Browser refresh sessions use an HttpOnly, SameSite=Strict cookie with server-side rotation/revocation.
 - The SLA scheduler is a separate process and uses a PostgreSQL advisory lock to prevent duplicate concurrent evaluation.
-- Attachment uploads are bounded per file and by total workspace quota; quota allocation is serialized to prevent concurrent over-allocation.
-- Keep `LLM_ENABLED=false` until the local model endpoint has been explicitly validated. The LLM never becomes an execution authority, and its circuit state is shared through Redis with a local fail-safe fallback.
+- Attachment uploads are bounded per file and by total workspace quota.
+- Keep `LLM_ENABLED=false` until the local model endpoint has been explicitly validated.
 
 ## Prepare configuration
 
 1. Copy `.env.production.example` to `.env.production`.
 2. Generate independent random values for `POSTGRES_PASSWORD`, `JWT_SECRET`, and `METRICS_BEARER_TOKEN`.
-3. Put the real external HTTPS origin in `CORS_ALLOW_ORIGINS`.
+3. Put the real external HTTPS origin in `CORS_ALLOW_ORIGINS`; `https://support.example.com` is not valid for public production.
 4. Leave `BOOTSTRAP_ENABLED=false` for an initialized installation.
-5. Set `CSP_BUILD_REVISION` to the deployed git commit SHA.
-6. Review `ATTACHMENT_MAX_BYTES`, `ATTACHMENT_WORKSPACE_QUOTA_BYTES`, and `SLA_SCHEDULER_INTERVAL_SECONDS` for the host capacity and operating policy.
+5. Keep `CSP_WEB_BIND=127.0.0.1:8180` when using the host tunnel/reverse proxy.
+6. Set `CSP_BUILD_REVISION` to the deployed git commit SHA.
+7. Review attachment quotas and scheduler interval for host capacity.
 
 Do not commit `.env.production`.
 
 ## Validate before deploy
 
 ```bash
-RELEASE_VERSION=0.9.0-rc1 bash tools/release-check.sh
+RELEASE_VERSION=0.9.0 bash tools/release-check.sh
 
 POSTGRES_PASSWORD=replace-with-a-long-random-password \
 CSP_ENV_FILE=.env.production.example \
 docker compose -f compose.production.yml config --quiet
 
-bash -n tools/backup.sh tools/restore-verify.sh tools/release-check.sh tools/smoke-production.sh
+bash -n \
+  tools/backup.sh \
+  tools/restore-verify.sh \
+  tools/release-check.sh \
+  tools/smoke-production.sh \
+  tools/deploy-production.sh \
+  tools/production-edge-check.sh \
+  tools/backup-offhost.sh \
+  tools/backup-and-offhost.sh
 ```
-
-Then validate the real environment by starting the migration/API path locally or on the target host. Unsafe production settings fail during application import before the API starts accepting traffic.
 
 ## Deploy
 
+The preferred production path is `.github/workflows/deploy-production.yml`, which runs only on the dedicated self-hosted production runner and invokes `tools/deploy-production.sh`.
+
+The deployment script requires a clean checkout and mode-600 `.env.production`, records the git SHA, creates and checksums a PostgreSQL backup when an existing database is present, performs an isolated restore verification, deploys the stack, and runs production smoke checks.
+
+Manual equivalent:
+
 ```bash
 export CSP_ENV_FILE=.env.production
+export RELEASE_VERSION=0.9.0
 export CSP_BUILD_REVISION="$(git rev-parse HEAD)"
-docker compose -f compose.production.yml up -d --build
+bash tools/deploy-production.sh
 ```
 
-The migration service must complete successfully before the API starts. Confirm:
+Confirm locally:
 
 ```bash
 curl -fsS http://127.0.0.1:8180/health
 curl -fsS http://127.0.0.1:8180/ready
-CSP_SMOKE_BASE_URL=http://127.0.0.1:8180 bash tools/smoke-production.sh
+CSP_SMOKE_BASE_URL=http://127.0.0.1:8180 RELEASE_VERSION=0.9.0 bash tools/smoke-production.sh
 ```
 
-`/ready` requires both PostgreSQL and Redis. Optional advisory LLM availability does not affect readiness.
+`/ready` requires PostgreSQL and Redis. `/docs`, `/openapi.json`, and `/redoc` must not be exposed through the production web edge. `/api/v1/metrics` without valid bearer credentials must not return metrics.
 
-`/docs` and `/openapi.json` must not be available through the production web edge. `/api/v1/metrics` without valid bearer credentials must not return metrics.
+## Public edge
 
-## Metrics and logs
+Public exposure is intentionally separate from the existing host tunnel stack. Follow `docs/production-edge-backup.md` and use the dedicated `cloudflared-support-endpoint.service` example rather than modifying another project's `cloudflared.service`.
 
-The API emits JSON logs with correlation ID and selected structured fields. Completed requests include method, path, status code and duration in milliseconds. Request bodies, authorization headers and token values are intentionally not logged.
-
-Prometheus-format metrics are available at `/api/v1/metrics` only when `METRICS_BEARER_TOKEN` is configured. Use:
+Before declaring public production ready:
 
 ```bash
-curl -fsS \
-  -H "Authorization: Bearer $METRICS_BEARER_TOKEN" \
-  http://127.0.0.1:8180/api/v1/metrics
+CSP_ENV_FILE=.env.production bash tools/production-edge-check.sh
 ```
 
-The endpoint returns 404 when metrics are not configured and 401 for invalid credentials.
+The check fails closed for placeholder CORS origins, non-loopback CSP web binding, missing/invalid HTTPS endpoint, incorrect runtime version/build identity, exposed API documentation, or an edge that does not route to the expected application.
 
-## Backup and restore rehearsal
+## Backup and recovery
 
-Attachments are currently stored inside PostgreSQL, so the database dump covers ticket data, communications, attachment bytes, RBAC, sessions, SLA state and audit records.
-
-Create a checksummed custom-format PostgreSQL backup:
+Create and verify a local PostgreSQL backup:
 
 ```bash
 CSP_ENV_FILE=.env.production bash tools/backup.sh
-```
-
-The command writes a mode-600 `.dump` plus `.sha256` under `backups/` by default. Copy backups off-host using an encrypted backup destination; a backup that exists only on the application host is not a disaster-recovery backup.
-
-Verify a backup by restoring it into an isolated temporary database and dropping that database afterwards:
-
-```bash
 CSP_ENV_FILE=.env.production bash tools/restore-verify.sh backups/csp-YYYYMMDDTHHMMSSZ.dump
 ```
 
-The verifier checks the checksum when present, performs `pg_restore --exit-on-error`, validates the schema marker, and never targets the production database name.
+A backup on the application host is only a local recovery checkpoint. Disaster recovery requires an independent off-host destination. The repository provides `tools/backup-offhost.sh`, `tools/backup-and-offhost.sh`, and systemd service/timer examples. The off-host transfer verifies the local checksum before transport and verifies the remote copy again after transport.
 
-GitHub CI performs this full backup/restore rehearsal against an ephemeral PostgreSQL instance on every branch/PR change.
-
-## Database and storage
-
-Composite indexes cover ticket workspace/status/assignee/client timelines, support-task timelines, user notification timelines, SLA deadlines and ticket audit status history. Alembic upgrade and downgrade remain CI-gated.
-
-Attachments are still PostgreSQL-backed in RC1. `ATTACHMENT_MAX_BYTES` bounds a single upload and `ATTACHMENT_WORKSPACE_QUOTA_BYTES` bounds aggregate workspace attachment bytes. For larger installations, migration to object storage remains an architectural scaling option rather than a release blocker for the bounded single-host profile.
+Do not reuse unrelated host backup services or destinations unless they have been explicitly provisioned for this application.
 
 ## Rollback
-
-Application rollback is image/source revision rollback plus Alembic compatibility review. Do not automatically downgrade a production database without checking whether the target release supports the current schema.
 
 Before a production schema change:
 
 1. create a fresh backup;
-2. complete an isolated restore rehearsal;
-3. record the currently deployed git SHA;
+2. complete isolated restore verification;
+3. record the current deployed git SHA;
 4. deploy the candidate;
-5. run `tools/smoke-production.sh`;
-6. if application rollback is required, restore the previous source/image revision first and only perform a database downgrade when explicitly verified safe for that schema transition.
+5. run the smoke suite;
+6. restore the previous source/image revision first if rollback is required;
+7. perform a database downgrade only after explicit schema compatibility review.
 
-## RC1 release criteria
+## Stable v0.9.0 release criteria
 
-`v0.9.0-rc1` is acceptable for production-like deployment only when all of the following hold:
+Repository-level promotion requires:
 
-- Python/Ruff/pytest/whitespace CI is green;
-- Alembic full upgrade/downgrade CI is green;
-- React typecheck/build is green;
-- production compose and shell validation are green;
-- PostgreSQL backup/restore rehearsal is green;
-- release metadata/invariant check is green;
-- full hardened compose stack starts successfully and `tools/smoke-production.sh` passes;
-- target-host secrets, HTTPS origin, reverse proxy/tunnel and off-host backup destination are configured outside the repository.
+- Python/Ruff/pytest/whitespace CI green;
+- Alembic upgrade/downgrade CI green;
+- React typecheck/build green;
+- production compose and shell validation green;
+- PostgreSQL backup/restore rehearsal green;
+- release metadata/invariant consistency green;
+- full hardened production compose smoke green;
+- successful target-host deployment with backup/restore/smoke verification.
 
-Environment-specific external DNS/TLS/reverse-proxy checks are deployment responsibilities and are intentionally not simulated by repository CI.
+Public-production activation additionally requires:
+
+- a dedicated real HTTPS hostname for Support Endpoint;
+- `CORS_ALLOW_ORIGINS` set to that real origin;
+- a dedicated tunnel/reverse-proxy route to `127.0.0.1:8180`;
+- successful `tools/production-edge-check.sh` against the real HTTPS endpoint;
+- an independent off-host backup destination with a successful verified transfer.
+
+Until those environment-specific items are satisfied, the application may run privately on the production host but must not be described as fully public-production ready.

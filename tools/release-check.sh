@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-expected="${RELEASE_VERSION:-0.9.0-rc1}"
+expected="${RELEASE_VERSION:-0.9.0}"
 pep440="${expected/-rc/rc}"
 release_doc="docs/RELEASE-v${expected}.md"
 security_doc="docs/SECURITY-REVIEW-v${expected}.md"

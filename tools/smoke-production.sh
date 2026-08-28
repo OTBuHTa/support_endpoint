@@ -4,7 +4,7 @@ set -euo pipefail
 base_url="${CSP_SMOKE_BASE_URL:-http://127.0.0.1:8180}"
 attempts="${CSP_SMOKE_ATTEMPTS:-40}"
 sleep_seconds="${CSP_SMOKE_SLEEP_SECONDS:-2}"
-expected_version="${RELEASE_VERSION:-0.9.0-rc1}"
+expected_version="${RELEASE_VERSION:-0.9.0}"
 expected_revision="${CSP_EXPECT_BUILD_REVISION:-}"
 
 wait_for_200() {
