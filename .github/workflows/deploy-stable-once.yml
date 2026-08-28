@@ -1,0 +1,46 @@
+name: Deploy stable v0.9.0 once
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: ${{ github.head_ref == 'agent/deploy-v0.9.0' }}
+    name: Deploy v0.9.0 on srv-ai
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 45
+    steps:
+      - name: Verify target host
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(hostname -s)" == "srv-ai" ]]
+          docker info >/dev/null
+          test -d /opt/support-endpoint/.git
+          test -f /opt/support-endpoint/.env.production
+          [[ "$(stat -c '%a' /opt/support-endpoint/.env.production)" == "600" ]]
+
+      - name: Sync approved main revision
+        shell: bash
+        working-directory: /opt/support-endpoint
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)"
+          git fetch --prune origin main
+          git checkout main
+          git reset --hard origin/main
+          printf 'deployment revision=%s\n' "$(git rev-parse HEAD)"
+
+      - name: Deploy and verify stable
+        shell: bash
+        working-directory: /opt/support-endpoint
+        env:
+          CSP_ENV_FILE: .env.production
+          RELEASE_VERSION: 0.9.0
+          CSP_SMOKE_BASE_URL: http://127.0.0.1:8180
+        run: bash tools/deploy-production.sh
