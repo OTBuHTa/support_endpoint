@@ -1,0 +1,75 @@
+name: Audit production edge
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Audit srv-ai production edge
+    if: ${{ github.head_ref == 'agent/audit-production-edge' }}
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 10
+    steps:
+      - name: Read-only edge audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo=/opt/support-endpoint
+          [[ "$(hostname -s)" == "srv-ai" ]]
+          test -d "$repo/.git"
+          git -C "$repo" remote get-url origin | grep -Eq 'github\.com[:/]OTBuHTa/support_endpoint(\.git)?$'
+
+          echo '=== SUPPORT ENDPOINT HEALTH ==='
+          curl -fsS --max-time 5 http://127.0.0.1:8180/health || true
+          echo
+          curl -fsS --max-time 5 http://127.0.0.1:8180/ready || true
+          echo
+
+          echo '=== LISTENERS ==='
+          ss -lntup 2>/dev/null | grep -E '(:80|:443|:8180|:8000|:8080|:8443)([[:space:]]|$)' || true
+
+          echo '=== DOCKER PORTS ==='
+          docker ps --format '{{.Names}}|{{.Ports}}|{{.Status}}' | grep '^csp-' || true
+
+          echo '=== EDGE SERVICES ==='
+          for svc in nginx apache2 caddy cloudflared traefik; do
+            if systemctl list-unit-files "$svc.service" --no-legend 2>/dev/null | grep -q "$svc.service"; then
+              printf '%s=' "$svc"
+              systemctl is-active "$svc" 2>/dev/null || true
+            fi
+          done
+
+          echo '=== CLOUDFLARED COMMAND/CONFIG REFERENCES ==='
+          if command -v cloudflared >/dev/null 2>&1; then
+            cloudflared --version || true
+            systemctl show cloudflared -p ExecStart --value 2>/dev/null || true
+            for f in /etc/cloudflared/config.yml /etc/cloudflared/config.yaml "$HOME/.cloudflared/config.yml" "$HOME/.cloudflared/config.yaml"; do
+              if [[ -r "$f" ]]; then
+                echo "config=$f"
+                grep -E '^[[:space:]]*(hostname:|service:)' "$f" || true
+              fi
+            done
+          fi
+
+          echo '=== REVERSE PROXY HOST REFERENCES ==='
+          grep -RhoE 'server_name[[:space:]]+[^;]+' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | sort -u || true
+          grep -RhoE 'reverse_proxy[[:space:]]+[^[:space:]]+' /etc/caddy /etc/Caddyfile 2>/dev/null | sort -u || true
+
+          echo '=== FIREWALL SUMMARY ==='
+          if command -v ufw >/dev/null 2>&1; then
+            ufw status 2>/dev/null || true
+          fi
+
+          echo '=== PUBLIC IP ==='
+          curl -4fsS --max-time 5 https://api.ipify.org || true
+          echo
+
+          echo '=== ENV ORIGIN (NON-SECRET) ==='
+          if [[ -r "$repo/.env.production" ]]; then
+            grep -E '^(CORS_ALLOW_ORIGINS|CSP_WEB_BIND)=' "$repo/.env.production" || true
+          fi
