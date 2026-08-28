@@ -11,11 +11,11 @@ permissions:
 jobs:
   apply:
     if: ${{ github.head_ref == 'agent/apply-final-edge-nas' }}
-    name: Diagnose NAS export access
+    name: Inspect NAS admin channel
     runs-on: [self-hosted, linux, x64, support-production]
     timeout-minutes: 10
     steps:
-      - name: Sync approved main and verify HTTPS
+      - name: Verify HTTPS production edge
         shell: bash
         working-directory: /opt/support-endpoint
         run: |
@@ -28,20 +28,33 @@ jobs:
           curl --cacert "$tls_dir/ca.crt" -fsS --max-time 10 https://srv-ai/health
           echo
 
-      - name: Inspect NAS exports and protocols
+      - name: Inspect NAS management reachability
         shell: bash
         run: |
           set -euo pipefail
-          echo '=== CLIENT ==='
-          hostname -I || true
-          echo '=== SHOWMOUNT ==='
+          nas=192.168.5.160
+          echo '=== NAS EXPORT ACL ==='
           docker run --rm --network=host alpine:3.20 sh -ceu '
             apk add --no-cache nfs-utils >/dev/null
             showmount -e 192.168.5.160 || true
-            rpcinfo -p 192.168.5.160 || true
           '
-          echo '=== FSTAB REFERENCE ==='
-          grep -F '192.168.5.160:' /etc/fstab || true
-          echo '=== EXISTING MOUNT INFO ==='
-          findmnt -T /mnt/ai-lab-nas || true
-          findmnt -T /mnt/ai-lab-nas-test || true
+          echo '=== MANAGEMENT PORTS ==='
+          for port in 22 80 443 5000 5001 8080 8443; do
+            if timeout 2 bash -c "</dev/tcp/$nas/$port" 2>/dev/null; then
+              echo "OPEN $port"
+            else
+              echo "CLOSED $port"
+            fi
+          done
+          echo '=== HTTP HEADERS ==='
+          for url in http://$nas https://$nas http://$nas:5000 https://$nas:5001 http://$nas:8080 https://$nas:8443; do
+            echo "--- $url"
+            curl -kIsS --max-time 3 "$url" 2>/dev/null | sed -n '1,12p' || true
+          done
+          echo '=== SSH HOST KEY ==='
+          if command -v ssh-keyscan >/dev/null; then
+            timeout 5 ssh-keyscan -T 3 "$nas" 2>/dev/null | head -5 || true
+          fi
+          echo '=== EXISTING NONINTERACTIVE SSH TEST ==='
+          timeout 6 ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no \
+            -o StrictHostKeyChecking=accept-new -o ConnectTimeout=4 "$nas" 'printf NAS_SSH_OK' 2>&1 || true
