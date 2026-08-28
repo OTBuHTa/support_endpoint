@@ -3,7 +3,7 @@ set -euo pipefail
 
 ENV_FILE="${CSP_ENV_FILE:-.env.production}"
 COMPOSE_FILE="${CSP_COMPOSE_FILE:-compose.production.yml}"
-EXPECTED_VERSION="${RELEASE_VERSION:-0.9.0-rc1}"
+EXPECTED_VERSION="${RELEASE_VERSION:-0.9.0}"
 WEB_URL="${CSP_SMOKE_BASE_URL:-http://127.0.0.1:8180}"
 
 fail() {
