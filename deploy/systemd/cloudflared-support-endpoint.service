@@ -1,0 +1,23 @@
+[Unit]
+Description=Cloudflare Tunnel for Support Endpoint
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cloudflared
+Group=cloudflared
+ExecStart=/usr/bin/cloudflared --no-autoupdate --config /etc/support-endpoint/cloudflared.yml tunnel run
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadOnlyPaths=/etc/support-endpoint
+
+[Install]
+WantedBy=multi-user.target
