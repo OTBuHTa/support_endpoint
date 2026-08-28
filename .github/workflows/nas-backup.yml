@@ -1,8 +1,9 @@
 name: Production NAS Backup
 
+# Scheduled execution is intentionally held until the TerraMaster NFS export
+# permits the production host address (192.168.5.155). Keep workflow_dispatch
+# available for immediate verification after the NAS ACL is corrected.
 on:
-  schedule:
-    - cron: '30 2 * * *'
   workflow_dispatch:
 
 permissions:
