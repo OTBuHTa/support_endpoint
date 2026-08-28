@@ -1,0 +1,67 @@
+name: Activate srv-ai HTTPS and NAS
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  activate:
+    if: ${{ github.head_ref == 'agent/activate-srv-ai-nas' }}
+    name: Activate HTTPS and NAS on srv-ai
+    runs-on: [self-hosted, linux, x64, support-production]
+    timeout-minutes: 30
+    steps:
+      - name: Activate and verify
+        shell: bash
+        working-directory: /opt/support-endpoint
+        env:
+          CSP_ENV_FILE: .env.production
+          CSP_TLS_DIR: runtime/tls
+          CSP_TLS_HOSTNAME: srv-ai
+          CSP_PUBLIC_ORIGIN: https://srv-ai
+          CSP_PUBLIC_CA_FILE: runtime/tls/ca.crt
+          CSP_NAS_BACKUP_DIR: /mnt/ai-lab-nas/support-endpoint
+          CSP_NAS_RETENTION_DAYS: '30'
+          RELEASE_VERSION: 0.9.0
+        run: |
+          set -euo pipefail
+          [[ "$(hostname -s)" == "srv-ai" ]]
+          test -d .git
+          test -f .env.production
+          [[ "$(stat -c '%a' .env.production)" == "600" ]]
+          test -z "$(git status --porcelain)"
+          git fetch --prune origin main
+          git checkout main
+          git reset --hard origin/main
+
+          if ss -lnt 2>/dev/null | grep -qE '[:.]443[[:space:]]'; then
+            if ! docker ps --format '{{.Names}}' | grep -qx 'csp-edge-edge-1'; then
+              echo 'port 443 is already occupied by another service' >&2
+              exit 1
+            fi
+          fi
+
+          cp -p .env.production .env.production.pre-srv-ai
+          chmod 600 .env.production.pre-srv-ai
+          if grep -q '^CORS_ALLOW_ORIGINS=' .env.production; then
+            sed -i 's#^CORS_ALLOW_ORIGINS=.*#CORS_ALLOW_ORIGINS=https://srv-ai#' .env.production
+          else
+            printf '\nCORS_ALLOW_ORIGINS=https://srv-ai\n' >> .env.production
+          fi
+          chmod 600 .env.production
+
+          bash tools/generate-local-tls.sh
+          docker compose -f compose.edge.yml up -d --remove-orphans
+
+          CSP_EXPECT_BUILD_REVISION="$(git rev-parse HEAD)" bash tools/production-edge-check.sh
+          bash tools/backup-to-nas.sh
+
+          echo '=== FINAL EDGE ==='
+          curl --cacert runtime/tls/ca.crt -fsS https://srv-ai/health
+          echo
+          echo '=== NAS LATEST ==='
+          find /mnt/ai-lab-nas/support-endpoint -maxdepth 1 -type f -name 'csp-*.dump' -printf '%TY-%Tm-%TdT%TH:%TM:%TS %s %p\n' | sort | tail -3
