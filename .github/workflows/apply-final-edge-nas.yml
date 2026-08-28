@@ -11,72 +11,37 @@ permissions:
 jobs:
   apply:
     if: ${{ github.head_ref == 'agent/apply-final-edge-nas' }}
-    name: Finalize srv-ai HTTPS and NAS backup
+    name: Diagnose NAS export access
     runs-on: [self-hosted, linux, x64, support-production]
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
-      - name: Reconcile HTTPS edge state
+      - name: Sync approved main and verify HTTPS
         shell: bash
         working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
-          [[ "$(hostname -s)" == "srv-ai" ]]
-          docker info >/dev/null
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
           tls_dir="$HOME/support-endpoint-runtime/tls"
-          grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
-          test -r "$tls_dir/ca.crt"
-          test -r "$tls_dir/server.crt"
-          test -r "$tls_dir/server.key"
-          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d --force-recreate edge
-          for i in $(seq 1 10); do
-            if curl --cacert "$tls_dir/ca.crt" -fsS --max-time 5 https://srv-ai/health; then
-              echo
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs --tail=100 csp-edge-edge-1 || true
-          exit 1
+          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d edge
+          curl --cacert "$tls_dir/ca.crt" -fsS --max-time 10 https://srv-ai/health
+          echo
 
-      - name: Ensure isolated NAS NFS mount
+      - name: Inspect NAS exports and protocols
         shell: bash
-        working-directory: /opt/support-endpoint
-        env:
-          CSP_NAS_HOST: 192.168.5.160
-          CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
-          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
-        run: bash tools/ensure-nas-mount.sh
-
-      - name: Create verified NAS backup
-        shell: bash
-        working-directory: /opt/support-endpoint
-        env:
-          CSP_ENV_FILE: .env.production
-          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
-          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
-          CSP_NAS_RETENTION_DAYS: '30'
-        run: bash tools/backup-to-nas.sh
-
-      - name: Verify final production state
-        shell: bash
-        working-directory: /opt/support-endpoint
         run: |
           set -euo pipefail
-          tls_dir="$HOME/support-endpoint-runtime/tls"
-          revision="$(git rev-parse HEAD)"
-          CSP_ENV_FILE=.env.production \
-          CSP_PUBLIC_ORIGIN=https://srv-ai \
-          CSP_PUBLIC_CA_FILE="$tls_dir/ca.crt" \
-          RELEASE_VERSION=0.9.0 \
-          CSP_EXPECT_BUILD_REVISION="$revision" \
-          bash tools/production-edge-check.sh
-          latest="$(find /mnt/support-endpoint-nas/support-endpoint -maxdepth 1 -name 'csp-*.dump' -type f | sort | tail -1)"
-          test -n "$latest"
-          (cd /mnt/support-endpoint-nas/support-endpoint && sha256sum -c "$(basename "$latest").sha256")
-          echo "latest_nas_backup=$latest"
-          findmnt /mnt/support-endpoint-nas
-          CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml ps
-          echo 'final_reconcile=main-4291dce'
+          echo '=== CLIENT ==='
+          hostname -I || true
+          echo '=== SHOWMOUNT ==='
+          docker run --rm --network=host alpine:3.20 sh -ceu '
+            apk add --no-cache nfs-utils >/dev/null
+            showmount -e 192.168.5.160 || true
+            rpcinfo -p 192.168.5.160 || true
+          '
+          echo '=== FSTAB REFERENCE ==='
+          grep -F '192.168.5.160:' /etc/fstab || true
+          echo '=== EXISTING MOUNT INFO ==='
+          findmnt -T /mnt/ai-lab-nas || true
+          findmnt -T /mnt/ai-lab-nas-test || true
