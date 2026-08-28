@@ -46,7 +46,7 @@ if compose ps -a --services | grep -qx postgres; then
   compose up -d --wait postgres
   backup_output="$(bash tools/backup.sh)"
   printf '%s\n' "$backup_output"
-  backup_file="$(printf '%s\n' "$backup_output" | grep -Eo '([^[:space:]]+\.dump)' | tail -1 || true)"
+  backup_file="$(printf '%s\n' "$backup_output" | sed -n 's/^backup=//p' | tail -1)"
   [[ -n "$backup_file" && -f "$backup_file" ]] \
     || fail "could not identify backup dump from tools/backup.sh output"
   bash tools/restore-verify.sh "$backup_file"
