@@ -26,19 +26,11 @@ jobs:
           git checkout main
           git reset --hard origin/main
           tls_dir="$HOME/support-endpoint-runtime/tls"
-          echo '=== CORS ==='
-          grep '^CORS_ALLOW_ORIGINS=' .env.production || true
-          echo '=== TLS ==='
-          ls -l "$tls_dir" || true
-          echo '=== EDGE BEFORE ==='
-          docker ps -a --filter name=csp-edge-edge-1 --format '{{.Names}}|{{.Status}}|{{.Ports}}' || true
           grep -q '^CORS_ALLOW_ORIGINS=https://srv-ai$' .env.production
           test -r "$tls_dir/ca.crt"
           test -r "$tls_dir/server.crt"
           test -r "$tls_dir/server.key"
           CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml up -d --force-recreate edge
-          echo '=== EDGE AFTER ==='
-          docker ps --filter name=csp-edge-edge-1 --format '{{.Names}}|{{.Status}}|{{.Ports}}'
           for i in $(seq 1 10); do
             if curl --cacert "$tls_dir/ca.crt" -fsS --max-time 5 https://srv-ai/health; then
               echo
@@ -49,32 +41,22 @@ jobs:
           docker logs --tail=100 csp-edge-edge-1 || true
           exit 1
 
-      - name: Diagnose and recover NAS NFS mount
+      - name: Ensure isolated NAS NFS mount
         shell: bash
-        run: |
-          set -euo pipefail
-          echo '=== NAS TCP 2049 ==='
-          timeout 5 bash -c '</dev/tcp/192.168.5.160/2049'
-          echo '=== NFS CLIENT ==='
-          command -v mount.nfs4 || true
-          grep -E 'nfs' /proc/filesystems || true
-          systemctl status mnt-ai\x2dlab\x2dnas.automount --no-pager 2>/dev/null || true
-          systemctl status mnt-ai\x2dlab\x2dnas.mount --no-pager 2>/dev/null || true
-          if ! grep -Eq '(^|[[:space:]])nfs(4)?$' /proc/filesystems; then
-            docker run --rm --privileged -v /lib/modules:/lib/modules:ro alpine:3.20 \
-              sh -c 'modprobe nfs || modprobe nfsv4 || true'
-          fi
-          echo '=== NFS FILESYSTEMS AFTER MODULE LOAD ==='
-          grep -E 'nfs' /proc/filesystems || true
-          timeout 15 ls -la /mnt/ai-lab-nas >/dev/null
-          findmnt /mnt/ai-lab-nas
+        working-directory: /opt/support-endpoint
+        env:
+          CSP_NAS_HOST: 192.168.5.160
+          CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+        run: bash tools/ensure-nas-mount.sh
 
       - name: Create verified NAS backup
         shell: bash
         working-directory: /opt/support-endpoint
         env:
           CSP_ENV_FILE: .env.production
-          CSP_NAS_BACKUP_DIR: /mnt/ai-lab-nas/support-endpoint
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
           CSP_NAS_RETENTION_DAYS: '30'
         run: bash tools/backup-to-nas.sh
 
@@ -91,9 +73,10 @@ jobs:
           RELEASE_VERSION=0.9.0 \
           CSP_EXPECT_BUILD_REVISION="$revision" \
           bash tools/production-edge-check.sh
-          latest="$(find /mnt/ai-lab-nas/support-endpoint -maxdepth 1 -name 'csp-*.dump' -type f | sort | tail -1)"
+          latest="$(find /mnt/support-endpoint-nas/support-endpoint -maxdepth 1 -name 'csp-*.dump' -type f | sort | tail -1)"
           test -n "$latest"
-          (cd /mnt/ai-lab-nas/support-endpoint && sha256sum -c "$(basename "$latest").sha256")
+          (cd /mnt/support-endpoint-nas/support-endpoint && sha256sum -c "$(basename "$latest").sha256")
           echo "latest_nas_backup=$latest"
+          findmnt /mnt/support-endpoint-nas
           CSP_TLS_DIR="$tls_dir" docker compose -f compose.edge.yml ps
-          echo 'final_reconcile=main-9958479'
+          echo 'final_reconcile=main-4291dce'
