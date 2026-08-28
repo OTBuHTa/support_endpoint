@@ -25,21 +25,25 @@ fi
 
 export CSP_ENV_FILE="$env_file"
 
+compose() {
+  docker compose --env-file "$env_file" -f "$compose_file" "$@"
+}
+
 cleanup() {
-  docker compose -f "$compose_file" exec -T postgres \
+  compose exec -T postgres \
     sh -ceu 'dropdb --username="$POSTGRES_USER" --if-exists --force "$1"' sh "$verify_db" \
     >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-docker compose -f "$compose_file" exec -T postgres \
+compose exec -T postgres \
   sh -ceu 'createdb --username="$POSTGRES_USER" "$1"' sh "$verify_db"
 
-docker compose -f "$compose_file" exec -T postgres \
+compose exec -T postgres \
   sh -ceu 'pg_restore --username="$POSTGRES_USER" --exit-on-error --no-owner --no-acl --dbname="$1"' \
   sh "$verify_db" < "$backup_file"
 
-docker compose -f "$compose_file" exec -T postgres \
+compose exec -T postgres \
   sh -ceu 'psql --username="$POSTGRES_USER" --dbname="$1" --tuples-only --no-align --command="SELECT count(*) FROM alembic_version;"' \
   sh "$verify_db" \
   | grep -Eq '^[1-9][0-9]*$'
