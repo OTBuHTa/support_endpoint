@@ -13,9 +13,9 @@ fail() {
 
 [[ -f "$ENV_FILE" ]] || fail "$ENV_FILE is missing"
 [[ -f "$COMPOSE_FILE" ]] || fail "$COMPOSE_FILE is missing"
-[[ -x tools/backup.sh ]] || fail "tools/backup.sh is not executable"
-[[ -x tools/restore-verify.sh ]] || fail "tools/restore-verify.sh is not executable"
-[[ -x tools/smoke-production.sh ]] || fail "tools/smoke-production.sh is not executable"
+[[ -r tools/backup.sh ]] || fail "tools/backup.sh is missing or unreadable"
+[[ -r tools/restore-verify.sh ]] || fail "tools/restore-verify.sh is missing or unreadable"
+[[ -r tools/smoke-production.sh ]] || fail "tools/smoke-production.sh is missing or unreadable"
 
 mode="$(stat -c '%a' "$ENV_FILE")"
 [[ "$mode" == "600" ]] || fail "$ENV_FILE must have mode 600 (found $mode)"
