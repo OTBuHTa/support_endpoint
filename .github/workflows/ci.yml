@@ -127,6 +127,7 @@ jobs:
           tools/backup-offhost.sh
           tools/backup-and-offhost.sh
           tools/generate-local-tls.sh
+          tools/ensure-nas-mount.sh
           tools/backup-to-nas.sh
       - name: Release consistency
         env:
