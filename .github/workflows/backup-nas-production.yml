@@ -23,7 +23,10 @@ jobs:
         working-directory: /opt/support-endpoint
         env:
           CSP_ENV_FILE: .env.production
-          CSP_NAS_BACKUP_DIR: /mnt/ai-lab-nas/support-endpoint
+          CSP_NAS_HOST: 192.168.5.160
+          CSP_NAS_EXPORT: /Volume1/AI-Lab-Backup
+          CSP_NAS_MOUNT_POINT: /mnt/support-endpoint-nas
+          CSP_NAS_BACKUP_DIR: /mnt/support-endpoint-nas/support-endpoint
           CSP_NAS_RETENTION_DAYS: '30'
         run: |
           set -euo pipefail
@@ -34,4 +37,5 @@ jobs:
           git fetch --prune origin main
           git checkout main
           git reset --hard origin/main
+          bash tools/ensure-nas-mount.sh
           bash tools/backup-to-nas.sh
